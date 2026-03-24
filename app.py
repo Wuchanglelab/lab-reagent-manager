@@ -32,7 +32,7 @@ DEFAULT_TEAMPLUS_API_KEY = ""
 DEFAULT_CATEGORY_NAMES = ["常用试剂", "危险试剂", "-20°C冰箱", "-80°C冰箱", "实验耗材", "生物样品"]
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
-MAX_UPLOAD_MB = 4 if os.environ.get("VERCEL") else 16
+MAX_UPLOAD_MB = 1
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024

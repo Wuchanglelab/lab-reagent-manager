@@ -808,7 +808,7 @@
                     <div v-if="scanItems.length === 0">
                         <div class="text-4xl mb-3">📸</div>
                         <p class="text-gray-600 text-sm">点击拍照或选择图片，支持批量导入</p>
-                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 4MB</p>
+                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 1MB</p>
                     </div>
                     <div v-else>
                         <div class="mb-3 text-left text-sm font-medium text-slate-700">已选择 {{scanItems.length}} 张图片</div>
@@ -905,7 +905,7 @@ createApp({
             quickFilter: '',
             scanCurrentIndex: 0,
             scanImportedCount: 0,
-            uploadMaxBytes: 4 * 1024 * 1024,
+            uploadMaxBytes: 1 * 1024 * 1024,
         };
     },
     computed: {
@@ -1370,7 +1370,7 @@ createApp({
                 accepted.push(file);
             }
             if (oversizedCount > 0) {
-                this.showToast(`有 ${oversizedCount} 张图片超过 4MB，Vercel 环境下无法上传`);
+                this.showToast(`有 ${oversizedCount} 张图片超过 1MB，无法上传`);
             }
             const selected = accepted.slice(0, remaining);
             if (files.length > remaining) {
