@@ -25,7 +25,8 @@ except ImportError:
 register_heif_opener()
 
 BASE_DIR = os.path.dirname(__file__)
-DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
+DEFAULT_DATA_DIR = "/tmp/lab-reagent-manager" if os.environ.get("VERCEL") else BASE_DIR
+DATA_DIR = os.environ.get("DATA_DIR", DEFAULT_DATA_DIR)
 LOCAL_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 LOCAL_DATABASE = os.path.join(DATA_DIR, "lab_reagents.db")
 DEFAULT_TEAMPLUS_API_KEY = ""
