@@ -1,36 +1,139 @@
-import os
-import uuid
 import base64
-import time
+import io
+import mimetypes
+import os
 import re
-import sqlite3
-from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory, send_file
-from werkzeug.utils import secure_filename
+import time
+import uuid
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+import requests
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from pillow_heif import register_heif_opener
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, create_engine, func, inspect, or_, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.pool import NullPool
+from werkzeug.utils import secure_filename
+
+try:
+    from vercel.blob import put as blob_put
+except ImportError:
+    blob_put = None
+
 register_heif_opener()
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.environ.get("DATA_DIR", BASE_DIR)
+LOCAL_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
+LOCAL_DATABASE = os.path.join(DATA_DIR, "lab_reagents.db")
+DEFAULT_TEAMPLUS_API_KEY = ""
+DEFAULT_CATEGORY_NAMES = ["常用试剂", "危险试剂", "-20°C冰箱", "-80°C冰箱", "实验耗材", "生物样品"]
+NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
+MAX_UPLOAD_MB = 4 if os.environ.get("VERCEL") else 16
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.join(DATA_DIR, 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
-DATABASE = os.path.join(DATA_DIR, 'lab_reagents.db')
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config["UPLOAD_FOLDER"] = LOCAL_UPLOAD_FOLDER
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'avif', 'gif', 'bmp', 'tiff', 'tif', 'heic', 'heif', 'svg'}
-DEFAULT_TEAMPLUS_API_KEY = ""
+Base = declarative_base()
 
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+    icon = Column(String)
+    color = Column(String)
+    sort_order = Column(Integer, default=0)
 
 
-def get_db():
-    db = sqlite3.connect(DATABASE)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    return db
+class Reagent(Base):
+    __tablename__ = "reagents"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    name_en = Column(String)
+    cas_number = Column(String)
+    catalog_number = Column(String)
+    brand = Column(String)
+    specification = Column(String)
+    purity = Column(String)
+    unit = Column(String, default="瓶")
+    quantity = Column(Float, default=0)
+    low_stock_threshold = Column(Float, default=1)
+    category = Column(String, nullable=False, default="常用试剂")
+    storage_location = Column(String)
+    storage_temp = Column(String)
+    hazard_level = Column(String, default="普通")
+    hazard_info = Column(String)
+    expiry_date = Column(String)
+    supplier = Column(String)
+    price = Column(Float)
+    notes = Column(String)
+    image_path = Column(String)
+    created_at = Column(String, default=lambda: now_text())
+    updated_at = Column(String, default=lambda: now_text())
+
+    usage_records = relationship("UsageRecord", back_populates="reagent", cascade="all, delete-orphan")
+
+
+class UsageRecord(Base):
+    __tablename__ = "usage_records"
+
+    id = Column(String, primary_key=True)
+    reagent_id = Column(String, ForeignKey("reagents.id"), nullable=False)
+    user_name = Column(String, nullable=False)
+    action = Column(String, nullable=False, default="领用")
+    quantity = Column(Float, nullable=False)
+    usage_unit = Column(String)
+    converted_quantity = Column(Float)
+    converted_unit = Column(String)
+    purpose = Column(String)
+    notes = Column(String)
+    created_at = Column(String, default=lambda: now_text())
+
+    reagent = relationship("Reagent", back_populates="usage_records")
+
+
+def now_text():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def model_to_dict(instance):
+    return {column.name: getattr(instance, column.name) for column in instance.__table__.columns}
+
+
+def choose_database_url():
+    candidates = [
+        os.environ.get("DATABASE_URL"),
+        os.environ.get("POSTGRES_URL_NON_POOLING"),
+        os.environ.get("POSTGRES_URL"),
+    ]
+    for candidate in candidates:
+        if candidate:
+            if candidate.startswith("postgres://"):
+                return "postgresql+psycopg" + candidate[len("postgres"):]
+            if candidate.startswith("postgresql://"):
+                return "postgresql+psycopg" + candidate[len("postgresql"):]
+            return candidate
+    return f"sqlite:///{LOCAL_DATABASE}"
+
+
+DATABASE_URL = choose_database_url()
+USING_SQLITE = DATABASE_URL.startswith("sqlite")
+
+engine_kwargs = {"future": True}
+if USING_SQLITE:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    engine_kwargs["poolclass"] = NullPool
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
 def get_ai_client_config():
@@ -42,12 +145,12 @@ def get_ai_client_config():
 
 
 def parse_model_json_content(resp_data):
-    import json as _json
+    import json
 
-    result_text = resp_data['choices'][0]['message']['content'].strip()
-    if result_text.startswith('```'):
-        result_text = result_text.split('\n', 1)[1].rsplit('```', 1)[0].strip()
-    return _json.loads(result_text)
+    result_text = resp_data["choices"][0]["message"]["content"].strip()
+    if result_text.startswith("```"):
+        result_text = result_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return json.loads(result_text)
 
 
 UNIT_ALIASES = {
@@ -79,12 +182,11 @@ def normalize_unit(unit):
 def parse_spec_amount(specification):
     if not specification:
         return None
-    match = re.search(r'(\d+(?:\.\d+)?)\s*(mL|ml|L|l|uL|ul|μL|μl|kg|g|mg)', str(specification))
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(mL|ml|L|l|uL|ul|μL|μl|kg|g|mg)", str(specification))
     if not match:
         return None
     value = float(match.group(1))
-    unit = match.group(2)
-    normalized = normalize_unit(unit)
+    normalized = normalize_unit(match.group(2))
     if not normalized:
         return None
     dimension, factor, display_unit = normalized
@@ -97,7 +199,8 @@ def parse_spec_amount(specification):
 
 
 def convert_usage_to_stock_units(reagent, quantity, usage_unit):
-    stock_unit = reagent["unit"]
+    stock_unit = reagent["unit"] if isinstance(reagent, dict) else reagent.unit
+    specification = reagent["specification"] if isinstance(reagent, dict) else reagent.specification
     stock_normalized = normalize_unit(stock_unit)
     usage_normalized = normalize_unit(usage_unit)
     if not stock_normalized or not usage_normalized:
@@ -108,33 +211,85 @@ def convert_usage_to_stock_units(reagent, quantity, usage_unit):
     qty = float(quantity)
 
     if stock_dim == usage_dim and stock_display not in CONTAINER_UNITS and usage_display not in CONTAINER_UNITS:
-        usage_base = qty * usage_factor
-        return usage_base / stock_factor
+        return (qty * usage_factor) / stock_factor
 
     if stock_display in CONTAINER_UNITS:
         if usage_display == stock_display:
             return qty
-        package_amount = parse_spec_amount(reagent["specification"])
+        package_amount = parse_spec_amount(specification)
         if not package_amount:
             raise ValueError("当前试剂规格未填写可换算的容量/质量，无法按该单位领用")
         if package_amount["dimension"] != usage_dim:
             raise ValueError("领用单位与规格单位不匹配，无法换算")
-        usage_base = qty * usage_factor
-        return usage_base / package_amount["base_amount"]
+        return (qty * usage_factor) / package_amount["base_amount"]
 
     raise ValueError("当前库存单位与领用单位无法换算")
 
 
-def post_chat_completion(payload, timeout=120, max_retries=3):
-    import requests as req_lib
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
+def use_blob_storage():
+    return bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
+
+
+def ensure_column(table_name, column_name, column_type):
+    inspector = inspect(engine)
+    existing = {column["name"] for column in inspector.get_columns(table_name)}
+    if column_name in existing:
+        return
+    with engine.begin() as connection:
+        connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
+
+def init_db():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if USING_SQLITE or not use_blob_storage():
+        os.makedirs(LOCAL_UPLOAD_FOLDER, exist_ok=True)
+
+    Base.metadata.create_all(engine)
+
+    if USING_SQLITE:
+        ensure_column("reagents", "low_stock_threshold", "REAL DEFAULT 1")
+        ensure_column("usage_records", "usage_unit", "TEXT")
+        ensure_column("usage_records", "converted_quantity", "REAL")
+        ensure_column("usage_records", "converted_unit", "TEXT")
+    else:
+        ensure_column("reagents", "low_stock_threshold", "DOUBLE PRECISION DEFAULT 1")
+        ensure_column("usage_records", "usage_unit", "TEXT")
+        ensure_column("usage_records", "converted_quantity", "DOUBLE PRECISION")
+        ensure_column("usage_records", "converted_unit", "TEXT")
+
+    session = SessionLocal()
+    try:
+        if session.query(Category).count() == 0:
+            session.add_all(
+                [
+                    Category(name="常用试剂", icon="🧪", color="#3b82f6", sort_order=1),
+                    Category(name="危险试剂", icon="☠️", color="#ef4444", sort_order=2),
+                    Category(name="-20°C冰箱", icon="❄️", color="#06b6d4", sort_order=3),
+                    Category(name="-80°C冰箱", icon="🧊", color="#8b5cf6", sort_order=4),
+                    Category(name="实验耗材", icon="🔬", color="#10b981", sort_order=5),
+                    Category(name="生物样品", icon="🧬", color="#f59e0b", sort_order=6),
+                ]
+            )
+            session.commit()
+    finally:
+        session.close()
+
+
+init_db()
+
+
+def post_chat_completion(payload, timeout=120, max_retries=3):
     api_base, api_key, _ = get_ai_client_config()
     if not api_key:
         raise RuntimeError("未配置 TEAMPLUS_API_KEY")
     last_error = None
     for attempt in range(max_retries):
         try:
-            resp = req_lib.post(
+            response = requests.post(
                 f"{api_base}/chat/completions",
                 headers={
                     "Content-Type": "application/json",
@@ -143,430 +298,481 @@ def post_chat_completion(payload, timeout=120, max_retries=3):
                 json=payload,
                 timeout=timeout,
             )
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            last_error = e
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            last_error = exc
             if attempt < max_retries - 1:
                 time.sleep(1.2 * (attempt + 1))
             else:
                 raise last_error
 
 
-def init_db():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    db = get_db()
-    db.executescript('''
-        CREATE TABLE IF NOT EXISTS reagents (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            name_en TEXT,
-            cas_number TEXT,
-            catalog_number TEXT,
-            brand TEXT,
-            specification TEXT,
-            purity TEXT,
-            unit TEXT DEFAULT '瓶',
-            quantity REAL DEFAULT 0,
-            low_stock_threshold REAL DEFAULT 1,
-            category TEXT NOT NULL DEFAULT '常用试剂',
-            storage_location TEXT,
-            storage_temp TEXT,
-            hazard_level TEXT DEFAULT '普通',
-            hazard_info TEXT,
-            expiry_date TEXT,
-            supplier TEXT,
-            price REAL,
-            notes TEXT,
-            image_path TEXT,
-            created_at TEXT DEFAULT (datetime('now', 'localtime')),
-            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-        );
-
-        CREATE TABLE IF NOT EXISTS usage_records (
-            id TEXT PRIMARY KEY,
-            reagent_id TEXT NOT NULL,
-            user_name TEXT NOT NULL,
-            action TEXT NOT NULL DEFAULT '领用',
-            quantity REAL NOT NULL,
-            usage_unit TEXT,
-            converted_quantity REAL,
-            converted_unit TEXT,
-            purpose TEXT,
-            notes TEXT,
-            created_at TEXT DEFAULT (datetime('now', 'localtime')),
-            FOREIGN KEY (reagent_id) REFERENCES reagents(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            icon TEXT,
-            color TEXT,
-            sort_order INTEGER DEFAULT 0
-        );
-    ''')
-
-    reagent_columns = {row["name"] for row in db.execute("PRAGMA table_info(reagents)").fetchall()}
-    if "low_stock_threshold" not in reagent_columns:
-        db.execute("ALTER TABLE reagents ADD COLUMN low_stock_threshold REAL DEFAULT 1")
-
-    usage_columns = {row["name"] for row in db.execute("PRAGMA table_info(usage_records)").fetchall()}
-    if "usage_unit" not in usage_columns:
-        db.execute("ALTER TABLE usage_records ADD COLUMN usage_unit TEXT")
-    if "converted_quantity" not in usage_columns:
-        db.execute("ALTER TABLE usage_records ADD COLUMN converted_quantity REAL")
-    if "converted_unit" not in usage_columns:
-        db.execute("ALTER TABLE usage_records ADD COLUMN converted_unit TEXT")
-
-    # Insert default categories if empty
-    existing = db.execute("SELECT COUNT(*) FROM categories").fetchone()[0]
-    if existing == 0:
-        default_categories = [
-            ('常用试剂', '🧪', '#3b82f6', 1),
-            ('危险试剂', '☠️', '#ef4444', 2),
-            ('-20°C冰箱', '❄️', '#06b6d4', 3),
-            ('-80°C冰箱', '🧊', '#8b5cf6', 4),
-            ('实验耗材', '🔬', '#10b981', 5),
-            ('生物样品', '🧬', '#f59e0b', 6),
-        ]
-        db.executemany(
-            "INSERT INTO categories (name, icon, color, sort_order) VALUES (?, ?, ?, ?)",
-            default_categories
+def upload_bytes(filename, body, content_type):
+    safe_name = secure_filename(filename) or f"{uuid.uuid4().hex[:12]}.bin"
+    if use_blob_storage():
+        if blob_put is None:
+            raise RuntimeError("未安装 vercel Blob SDK")
+        pathname = f"reagents/{uuid.uuid4().hex[:12]}-{safe_name}"
+        blob = blob_put(
+            path=pathname,
+            body=body,
+            access="public",
+            content_type=content_type,
+            add_random_suffix=False,
+            token=os.environ.get("BLOB_READ_WRITE_TOKEN"),
         )
+        blob_url = getattr(blob, "url", None)
+        blob_pathname = getattr(blob, "pathname", None) or pathname
+        return {
+            "file_ref": blob_url,
+            "filename": blob_pathname,
+            "url": blob_url,
+        }
 
-    db.commit()
-    db.close()
+    os.makedirs(LOCAL_UPLOAD_FOLDER, exist_ok=True)
+    local_name = f"{uuid.uuid4().hex[:12]}-{safe_name}"
+    filepath = os.path.join(LOCAL_UPLOAD_FOLDER, local_name)
+    with open(filepath, "wb") as file_obj:
+        file_obj.write(body)
+    return {
+        "file_ref": local_name,
+        "filename": local_name,
+        "url": f"/uploads/{local_name}",
+    }
 
 
-init_db()
+def load_uploaded_bytes(file_ref):
+    if not file_ref:
+        raise FileNotFoundError("文件不存在")
+    file_ref = str(file_ref)
+    if file_ref.startswith("http://") or file_ref.startswith("https://"):
+        response = requests.get(file_ref, timeout=30)
+        response.raise_for_status()
+        return response.content, response.headers.get("content-type"), file_ref
+
+    filepath = os.path.join(LOCAL_UPLOAD_FOLDER, file_ref)
+    if not os.path.exists(filepath):
+        raise FileNotFoundError("文件不存在")
+    with open(filepath, "rb") as file_obj:
+        body = file_obj.read()
+    content_type, _ = mimetypes.guess_type(filepath)
+    return body, content_type, filepath
+
+
+def media_type_from_name(name, content_type=None):
+    if content_type and content_type.startswith("image/"):
+        return content_type
+    guessed_type, _ = mimetypes.guess_type(str(name).split("?", 1)[0])
+    if guessed_type and guessed_type.startswith("image/"):
+        return guessed_type
+    return "image/png"
+
+
+def parse_expiry_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def is_expiring_soon(value, days=30):
+    expiry = parse_expiry_date(value)
+    if not expiry:
+        return False
+    return expiry <= (datetime.now().date() + timedelta(days=days))
+
+
+def compute_inventory_stats(reagents):
+    stats = {
+        "total": len(reagents),
+        "low_stock": 0,
+        "out_of_stock": 0,
+        "hazardous": 0,
+        "expiring_soon": 0,
+        "shortcut_counts": {
+            "hazardous": 0,
+            "-20_storage": 0,
+            "-80_storage": 0,
+        },
+        "category_stats": [],
+    }
+    category_stats = defaultdict(lambda: {"count": 0, "total_qty": 0.0})
+
+    for reagent in reagents:
+        quantity = reagent.get("quantity") or 0
+        threshold = reagent.get("low_stock_threshold")
+        threshold = 1 if threshold is None else threshold
+        hazard_level = reagent.get("hazard_level") or "普通"
+        storage_temp = reagent.get("storage_temp") or ""
+        category = reagent.get("category") or "未分类"
+
+        if quantity <= 0:
+            stats["out_of_stock"] += 1
+        elif threshold > 0 and quantity <= threshold:
+            stats["low_stock"] += 1
+
+        if hazard_level != "普通":
+            stats["hazardous"] += 1
+            stats["shortcut_counts"]["hazardous"] += 1
+        if "-20" in storage_temp:
+            stats["shortcut_counts"]["-20_storage"] += 1
+        if "-80" in storage_temp:
+            stats["shortcut_counts"]["-80_storage"] += 1
+        if is_expiring_soon(reagent.get("expiry_date")):
+            stats["expiring_soon"] += 1
+
+        category_stats[category]["count"] += 1
+        category_stats[category]["total_qty"] += quantity
+
+    stats["category_stats"] = [
+        {"category": category, "count": values["count"], "total_qty": values["total_qty"]}
+        for category, values in sorted(category_stats.items(), key=lambda item: item[0])
+    ]
+    return stats
+
+
+def serialize_usage_row(record, reagent_name, stock_unit):
+    data = model_to_dict(record)
+    data["reagent_name"] = reagent_name
+    data["stock_unit"] = stock_unit
+    return data
 
 
 # ---------- Pages ----------
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    return send_file(os.path.join(os.path.dirname(__file__), 'templates', 'index.html'))
+    return send_file(os.path.join(BASE_DIR, "templates", "index.html"))
 
 
-@app.route('/uploads/<filename>')
+@app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if use_blob_storage():
+        return jsonify({"error": "Vercel Blob 文件不通过本地路径访问"}), 404
+    return send_from_directory(LOCAL_UPLOAD_FOLDER, filename)
 
 
 # ---------- Category API ----------
 
-@app.route('/api/categories', methods=['GET'])
+
+@app.route("/api/categories", methods=["GET"])
 def get_categories():
-    db = get_db()
-    rows = db.execute("SELECT * FROM categories ORDER BY sort_order").fetchall()
-    db.close()
-    return jsonify([dict(r) for r in rows])
+    session = SessionLocal()
+    try:
+        rows = session.query(Category).order_by(Category.sort_order.asc(), Category.id.asc()).all()
+        return jsonify([model_to_dict(row) for row in rows])
+    finally:
+        session.close()
 
 
-@app.route('/api/categories', methods=['POST'])
+@app.route("/api/categories", methods=["POST"])
 def add_category():
-    data = request.json
-    db = get_db()
-    db.execute(
-        "INSERT INTO categories (name, icon, color, sort_order) VALUES (?, ?, ?, ?)",
-        (data['name'], data.get('icon', '📦'), data.get('color', '#6b7280'),
-         data.get('sort_order', 99))
-    )
-    db.commit()
-    db.close()
-    return jsonify({"success": True})
+    data = request.json or {}
+    session = SessionLocal()
+    try:
+        category = Category(
+            name=data["name"],
+            icon=data.get("icon", "📦"),
+            color=data.get("color", "#6b7280"),
+            sort_order=data.get("sort_order", 99),
+        )
+        session.add(category)
+        session.commit()
+        return jsonify({"success": True})
+    except IntegrityError:
+        session.rollback()
+        return jsonify({"error": "分类已存在"}), 400
+    finally:
+        session.close()
 
 
 # ---------- Reagent API ----------
 
-@app.route('/api/reagents', methods=['GET'])
+
+@app.route("/api/reagents", methods=["GET"])
 def get_reagents():
-    db = get_db()
-    category = request.args.get('category')
-    search = request.args.get('search')
-    hazard = request.args.get('hazard_level')
+    session = SessionLocal()
+    try:
+        category = request.args.get("category")
+        search = request.args.get("search")
+        hazard = request.args.get("hazard_level")
 
-    query = "SELECT * FROM reagents WHERE 1=1"
-    params = []
+        query = session.query(Reagent)
+        if category:
+            query = query.filter(Reagent.category == category)
+        if search:
+            term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Reagent.name.ilike(term),
+                    Reagent.name_en.ilike(term),
+                    Reagent.cas_number.ilike(term),
+                    Reagent.catalog_number.ilike(term),
+                )
+            )
+        if hazard:
+            query = query.filter(Reagent.hazard_level == hazard)
 
-    if category:
-        query += " AND category = ?"
-        params.append(category)
-    if search:
-        query += " AND (name LIKE ? OR name_en LIKE ? OR cas_number LIKE ? OR catalog_number LIKE ?)"
-        term = f"%{search}%"
-        params.extend([term, term, term, term])
-    if hazard:
-        query += " AND hazard_level = ?"
-        params.append(hazard)
-
-    query += " ORDER BY updated_at DESC"
-    rows = db.execute(query, params).fetchall()
-    db.close()
-    return jsonify([dict(r) for r in rows])
+        rows = query.order_by(Reagent.updated_at.desc()).all()
+        return jsonify([model_to_dict(row) for row in rows])
+    finally:
+        session.close()
 
 
-@app.route('/api/storage-locations', methods=['GET'])
+@app.route("/api/storage-locations", methods=["GET"])
 def get_storage_locations():
-    db = get_db()
-    rows = db.execute("""
-        SELECT DISTINCT TRIM(storage_location) AS storage_location
-        FROM reagents
-        WHERE storage_location IS NOT NULL AND TRIM(storage_location) != ''
-        ORDER BY storage_location COLLATE NOCASE
-    """).fetchall()
-    db.close()
-    return jsonify([r["storage_location"] for r in rows])
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(Reagent.storage_location)
+            .filter(Reagent.storage_location.isnot(None))
+            .filter(func.trim(Reagent.storage_location) != "")
+            .distinct()
+            .all()
+        )
+        locations = sorted({value for (value,) in rows if value and value.strip()}, key=lambda item: item.lower())
+        return jsonify(locations)
+    finally:
+        session.close()
 
 
-@app.route('/api/reagents', methods=['POST'])
+@app.route("/api/reagents", methods=["POST"])
 def add_reagent():
-    data = request.json
+    data = request.json or {}
     reagent_id = str(uuid.uuid4())[:8]
-    db = get_db()
-    db.execute('''
-        INSERT INTO reagents (id, name, name_en, cas_number, catalog_number, brand,
-            specification, purity, unit, quantity, low_stock_threshold, category, storage_location,
-            storage_temp, hazard_level, hazard_info, expiry_date, supplier, price, notes, image_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        reagent_id, data['name'], data.get('name_en'), data.get('cas_number'),
-        data.get('catalog_number'), data.get('brand'), data.get('specification'),
-        data.get('purity'), data.get('unit', '瓶'), data.get('quantity', 0),
-        data.get('low_stock_threshold', 1),
-        data.get('category', '常用试剂'), data.get('storage_location'),
-        data.get('storage_temp'), data.get('hazard_level', '普通'),
-        data.get('hazard_info'), data.get('expiry_date'), data.get('supplier'),
-        data.get('price'), data.get('notes'), data.get('image_path')
-    ))
-    db.commit()
-    db.close()
-    return jsonify({"success": True, "id": reagent_id})
+    session = SessionLocal()
+    try:
+        reagent = Reagent(
+            id=reagent_id,
+            name=data["name"],
+            name_en=data.get("name_en"),
+            cas_number=data.get("cas_number"),
+            catalog_number=data.get("catalog_number"),
+            brand=data.get("brand"),
+            specification=data.get("specification"),
+            purity=data.get("purity"),
+            unit=data.get("unit", "瓶"),
+            quantity=data.get("quantity", 0),
+            low_stock_threshold=data.get("low_stock_threshold", 1),
+            category=data.get("category", "常用试剂"),
+            storage_location=data.get("storage_location"),
+            storage_temp=data.get("storage_temp"),
+            hazard_level=data.get("hazard_level", "普通"),
+            hazard_info=data.get("hazard_info"),
+            expiry_date=data.get("expiry_date"),
+            supplier=data.get("supplier"),
+            price=data.get("price"),
+            notes=data.get("notes"),
+            image_path=data.get("image_path"),
+            created_at=now_text(),
+            updated_at=now_text(),
+        )
+        session.add(reagent)
+        session.commit()
+        return jsonify({"success": True, "id": reagent_id})
+    finally:
+        session.close()
 
 
-@app.route('/api/reagents/<reagent_id>', methods=['GET'])
+@app.route("/api/reagents/<reagent_id>", methods=["GET"])
 def get_reagent(reagent_id):
-    db = get_db()
-    row = db.execute("SELECT * FROM reagents WHERE id = ?", (reagent_id,)).fetchone()
-    db.close()
-    if row:
-        return jsonify(dict(row))
-    return jsonify({"error": "Not found"}), 404
+    session = SessionLocal()
+    try:
+        row = session.get(Reagent, reagent_id)
+        if not row:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(model_to_dict(row))
+    finally:
+        session.close()
 
 
-@app.route('/api/reagents/<reagent_id>', methods=['PUT'])
+@app.route("/api/reagents/<reagent_id>", methods=["PUT"])
 def update_reagent(reagent_id):
-    data = request.json
-    db = get_db()
-    fields = []
-    values = []
-    for key in ['name', 'name_en', 'cas_number', 'catalog_number', 'brand',
-                'specification', 'purity', 'unit', 'quantity', 'low_stock_threshold', 'category',
-                'storage_location', 'storage_temp', 'hazard_level', 'hazard_info',
-                'expiry_date', 'supplier', 'price', 'notes', 'image_path']:
-        if key in data:
-            fields.append(f"{key} = ?")
-            values.append(data[key])
+    data = request.json or {}
+    session = SessionLocal()
+    try:
+        reagent = session.get(Reagent, reagent_id)
+        if not reagent:
+            return jsonify({"error": "Not found"}), 404
 
-    if fields:
-        fields.append("updated_at = datetime('now', 'localtime')")
-        values.append(reagent_id)
-        db.execute(f"UPDATE reagents SET {', '.join(fields)} WHERE id = ?", values)
-        db.commit()
+        for key in [
+            "name",
+            "name_en",
+            "cas_number",
+            "catalog_number",
+            "brand",
+            "specification",
+            "purity",
+            "unit",
+            "quantity",
+            "low_stock_threshold",
+            "category",
+            "storage_location",
+            "storage_temp",
+            "hazard_level",
+            "hazard_info",
+            "expiry_date",
+            "supplier",
+            "price",
+            "notes",
+            "image_path",
+        ]:
+            if key in data:
+                setattr(reagent, key, data[key])
 
-    db.close()
-    return jsonify({"success": True})
+        reagent.updated_at = now_text()
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
 
 
-@app.route('/api/reagents/<reagent_id>', methods=['DELETE'])
+@app.route("/api/reagents/<reagent_id>", methods=["DELETE"])
 def delete_reagent(reagent_id):
-    db = get_db()
-    db.execute("DELETE FROM usage_records WHERE reagent_id = ?", (reagent_id,))
-    db.execute("DELETE FROM reagents WHERE id = ?", (reagent_id,))
-    db.commit()
-    db.close()
-    return jsonify({"success": True})
+    session = SessionLocal()
+    try:
+        reagent = session.get(Reagent, reagent_id)
+        if not reagent:
+            return jsonify({"error": "试剂不存在"}), 404
+        session.delete(reagent)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
 
 
 # ---------- Usage Record API ----------
 
-@app.route('/api/usage', methods=['GET'])
+
+@app.route("/api/usage", methods=["GET"])
 def get_usage_records():
-    db = get_db()
-    reagent_id = request.args.get('reagent_id')
-    query = '''
-        SELECT u.*, r.name as reagent_name, r.unit as stock_unit
-        FROM usage_records u
-        JOIN reagents r ON u.reagent_id = r.id
-    '''
-    params = []
-    if reagent_id:
-        query += " WHERE u.reagent_id = ?"
-        params.append(reagent_id)
-    query += " ORDER BY u.created_at DESC LIMIT 200"
-    rows = db.execute(query, params).fetchall()
-    db.close()
-    return jsonify([dict(r) for r in rows])
+    session = SessionLocal()
+    try:
+        reagent_id = request.args.get("reagent_id")
+        query = session.query(UsageRecord, Reagent.name, Reagent.unit).join(Reagent, UsageRecord.reagent_id == Reagent.id)
+        if reagent_id:
+            query = query.filter(UsageRecord.reagent_id == reagent_id)
+        rows = query.order_by(UsageRecord.created_at.desc()).limit(200).all()
+        return jsonify([serialize_usage_row(record, reagent_name, stock_unit) for record, reagent_name, stock_unit in rows])
+    finally:
+        session.close()
 
 
-@app.route('/api/usage', methods=['POST'])
+@app.route("/api/usage", methods=["POST"])
 def add_usage_record():
     data = request.json or {}
     record_id = str(uuid.uuid4())[:8]
-    db = get_db()
-
-    reagent = db.execute("SELECT quantity, unit, specification FROM reagents WHERE id = ?",
-                         (data['reagent_id'],)).fetchone()
-    if not reagent:
-        db.close()
-        return jsonify({"error": "试剂不存在"}), 404
-
+    session = SessionLocal()
     try:
-        raw_quantity = float(data.get('quantity', 0))
-    except (TypeError, ValueError):
-        db.close()
-        return jsonify({"error": "数量格式不正确"}), 400
+        reagent = session.get(Reagent, data["reagent_id"])
+        if not reagent:
+            return jsonify({"error": "试剂不存在"}), 404
 
-    if raw_quantity <= 0:
-        db.close()
-        return jsonify({"error": "数量必须大于 0"}), 400
+        try:
+            raw_quantity = float(data.get("quantity", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "数量格式不正确"}), 400
 
-    usage_unit = data.get('usage_unit') or reagent['unit']
-    try:
-        converted_quantity = round(convert_usage_to_stock_units(reagent, raw_quantity, usage_unit), 6)
-    except ValueError as e:
-        db.close()
-        return jsonify({"error": str(e)}), 400
+        if raw_quantity <= 0:
+            return jsonify({"error": "数量必须大于 0"}), 400
 
-    action = data.get('action', '领用')
-    if action == '领用':
-        if converted_quantity > (reagent['quantity'] or 0):
-            db.close()
-            return jsonify({"error": "领用数量超过当前库存"}), 400
-        new_qty = round((reagent['quantity'] or 0) - converted_quantity, 6)
-    else:  # 入库
-        new_qty = round((reagent['quantity'] or 0) + converted_quantity, 6)
+        usage_unit = data.get("usage_unit") or reagent.unit
+        try:
+            converted_quantity = round(convert_usage_to_stock_units(reagent, raw_quantity, usage_unit), 6)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
-    normalized_usage_unit = normalize_unit(usage_unit)
-    normalized_stock_unit = normalize_unit(reagent['unit'])
-    usage_unit_display = normalized_usage_unit[2] if normalized_usage_unit else usage_unit
-    stock_unit_display = normalized_stock_unit[2] if normalized_stock_unit else reagent['unit']
+        action = data.get("action", "领用")
+        if action == "领用":
+            if converted_quantity > (reagent.quantity or 0):
+                return jsonify({"error": "领用数量超过当前库存"}), 400
+            reagent.quantity = round((reagent.quantity or 0) - converted_quantity, 6)
+        else:
+            reagent.quantity = round((reagent.quantity or 0) + converted_quantity, 6)
 
-    db.execute("UPDATE reagents SET quantity = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-               (new_qty, data['reagent_id']))
+        reagent.updated_at = now_text()
 
-    db.execute('''
-        INSERT INTO usage_records (
-            id, reagent_id, user_name, action, quantity, usage_unit,
-            converted_quantity, converted_unit, purpose, notes
+        normalized_usage_unit = normalize_unit(usage_unit)
+        normalized_stock_unit = normalize_unit(reagent.unit)
+        usage_unit_display = normalized_usage_unit[2] if normalized_usage_unit else usage_unit
+        stock_unit_display = normalized_stock_unit[2] if normalized_stock_unit else reagent.unit
+
+        session.add(
+            UsageRecord(
+                id=record_id,
+                reagent_id=reagent.id,
+                user_name=data["user_name"],
+                action=action,
+                quantity=raw_quantity,
+                usage_unit=usage_unit_display,
+                converted_quantity=converted_quantity,
+                converted_unit=stock_unit_display,
+                purpose=data.get("purpose"),
+                notes=data.get("notes"),
+                created_at=now_text(),
+            )
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (record_id, data['reagent_id'], data['user_name'],
-          action, raw_quantity, usage_unit_display, converted_quantity,
-          stock_unit_display, data.get('purpose'), data.get('notes')))
-
-    db.commit()
-    db.close()
-    return jsonify({
-        "success": True,
-        "new_quantity": new_qty,
-        "converted_quantity": converted_quantity,
-        "converted_unit": stock_unit_display,
-        "usage_unit": usage_unit_display,
-    })
+        session.commit()
+        return jsonify(
+            {
+                "success": True,
+                "new_quantity": reagent.quantity,
+                "converted_quantity": converted_quantity,
+                "converted_unit": stock_unit_display,
+                "usage_unit": usage_unit_display,
+            }
+        )
+    finally:
+        session.close()
 
 
 # ---------- Dashboard Stats ----------
 
-@app.route('/api/stats', methods=['GET'])
+
+@app.route("/api/stats", methods=["GET"])
 def get_stats():
-    db = get_db()
-    total = db.execute("SELECT COUNT(*) FROM reagents").fetchone()[0]
-    low_stock = db.execute("""
-        SELECT COUNT(*)
-        FROM reagents
-        WHERE quantity > 0
-          AND COALESCE(low_stock_threshold, 1) > 0
-          AND quantity <= COALESCE(low_stock_threshold, 1)
-    """).fetchone()[0]
-    out_of_stock = db.execute("SELECT COUNT(*) FROM reagents WHERE quantity <= 0").fetchone()[0]
-    hazardous = db.execute("SELECT COUNT(*) FROM reagents WHERE hazard_level != '普通'").fetchone()[0]
-    expiring = db.execute(
-        """
-        SELECT COUNT(*)
-        FROM reagents
-        WHERE expiry_date IS NOT NULL
-          AND TRIM(expiry_date) != ''
-          AND expiry_date <= date('now', '+30 days', 'localtime')
-        """
-    ).fetchone()[0]
-    frozen_20 = db.execute("SELECT COUNT(*) FROM reagents WHERE COALESCE(storage_temp, '') LIKE '%-20%'").fetchone()[0]
-    frozen_80 = db.execute("SELECT COUNT(*) FROM reagents WHERE COALESCE(storage_temp, '') LIKE '%-80%'").fetchone()[0]
-
-    category_stats = db.execute(
-        "SELECT category, COUNT(*) as count, SUM(quantity) as total_qty FROM reagents GROUP BY category"
-    ).fetchall()
-
-    recent_usage = db.execute('''
-        SELECT u.*, r.name as reagent_name, r.unit as stock_unit
-        FROM usage_records u JOIN reagents r ON u.reagent_id = r.id
-        ORDER BY u.created_at DESC LIMIT 10
-    ''').fetchall()
-
-    db.close()
-    return jsonify({
-        "total": total,
-        "low_stock": low_stock,
-        "out_of_stock": out_of_stock,
-        "hazardous": hazardous,
-        "expiring_soon": expiring,
-        "shortcut_counts": {
-            "hazardous": hazardous,
-            "-20_storage": frozen_20,
-            "-80_storage": frozen_80,
-        },
-        "category_stats": [dict(r) for r in category_stats],
-        "recent_usage": [dict(r) for r in recent_usage],
-    })
+    session = SessionLocal()
+    try:
+        reagents = [model_to_dict(row) for row in session.query(Reagent).order_by(Reagent.updated_at.desc()).all()]
+        stats = compute_inventory_stats(reagents)
+        recent_usage_rows = (
+            session.query(UsageRecord, Reagent.name, Reagent.unit)
+            .join(Reagent, UsageRecord.reagent_id == Reagent.id)
+            .order_by(UsageRecord.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        stats["recent_usage"] = [
+            serialize_usage_row(record, reagent_name, stock_unit) for record, reagent_name, stock_unit in recent_usage_rows
+        ]
+        return jsonify(stats)
+    finally:
+        session.close()
 
 
-@app.route('/api/inspection/ai-review', methods=['POST'])
+@app.route("/api/inspection/ai-review", methods=["POST"])
 def ai_review_inventory():
-    db = get_db()
-    reagents = [dict(r) for r in db.execute('''
-        SELECT id, name, name_en, cas_number, catalog_number, brand, specification, purity,
-               unit, quantity, low_stock_threshold, category, storage_location, storage_temp, hazard_level,
-               hazard_info, expiry_date, supplier, notes, updated_at
-        FROM reagents
-        ORDER BY updated_at DESC
-    ''').fetchall()]
-    recent_usage = [dict(r) for r in db.execute('''
-        SELECT u.created_at, u.user_name, u.action, u.quantity, u.usage_unit, u.converted_quantity,
-               u.converted_unit, r.name AS reagent_name, r.unit AS stock_unit
-        FROM usage_records u
-        JOIN reagents r ON u.reagent_id = r.id
-        ORDER BY u.created_at DESC LIMIT 20
-    ''').fetchall()]
-    db.close()
+    session = SessionLocal()
+    try:
+        reagents = [model_to_dict(row) for row in session.query(Reagent).order_by(Reagent.updated_at.desc()).all()]
+        recent_usage = [
+            serialize_usage_row(record, reagent_name, stock_unit)
+            for record, reagent_name, stock_unit in (
+                session.query(UsageRecord, Reagent.name, Reagent.unit)
+                .join(Reagent, UsageRecord.reagent_id == Reagent.id)
+                .order_by(UsageRecord.created_at.desc())
+                .limit(20)
+                .all()
+            )
+        ]
+    finally:
+        session.close()
 
-    stats = {
-        "total": len(reagents),
-        "low_stock": sum(
-            1 for r in reagents
-            if (r.get('quantity') or 0) > 0
-            and (r.get('low_stock_threshold') if r.get('low_stock_threshold') is not None else 1) > 0
-            and (r.get('quantity') or 0) <= (r.get('low_stock_threshold') if r.get('low_stock_threshold') is not None else 1)
-        ),
-        "out_of_stock": sum(1 for r in reagents if (r.get('quantity') or 0) <= 0),
-        "hazardous": sum(1 for r in reagents if (r.get('hazard_level') or '普通') != '普通'),
-        "expiring_soon": sum(
-            1 for r in reagents
-            if r.get('expiry_date') and str(r['expiry_date']).strip()
-            and r['expiry_date'] <= datetime.now().strftime('%Y-%m-%d')
-        ),
-    }
+    stats = compute_inventory_stats(reagents)
 
     _, _, model = get_ai_client_config()
     try:
@@ -587,74 +793,86 @@ def ai_review_inventory():
   "checked_at": "YYYY-MM-DD HH:MM"
 }"""
 
-        result = parse_model_json_content(post_chat_completion(
-            {
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": f"{prompt}\n\n库存统计:\n{stats}\n\n试剂清单:\n{reagents}\n\n最近使用记录:\n{recent_usage}"
-                }],
-                "max_tokens": 1200,
-            }
-        ))
+        result = parse_model_json_content(
+            post_chat_completion(
+                {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": f"{prompt}\n\n库存统计:\n{stats}\n\n试剂清单:\n{reagents}\n\n最近使用记录:\n{recent_usage}",
+                        }
+                    ],
+                    "max_tokens": 1200,
+                }
+            )
+        )
         return jsonify({"success": True, "data": result})
-    except Exception as e:
-        return jsonify({"success": False, "error": f"AI审核失败: {str(e)}"}), 500
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"AI审核失败: {str(exc)}"}), 500
 
 
 # ---------- Image Upload & AI Recognition ----------
 
-@app.route('/api/upload', methods=['POST'])
+
+@app.route("/api/upload", methods=["POST"])
 def upload_image():
-    if 'file' not in request.files:
+    if "file" not in request.files:
         return jsonify({"error": "没有上传文件"}), 400
 
-    file = request.files['file']
-    if file.filename == '' or not allowed_file(file.filename):
+    file = request.files["file"]
+    if file.filename == "" or not allowed_file(file.filename):
         return jsonify({"error": "不支持的文件格式"}), 400
 
-    ext = file.filename.rsplit('.', 1)[1].lower()
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    content_type = file.mimetype or media_type_from_name(file.filename)
 
-    # Convert non-standard formats to PNG for API compatibility
-    if ext in ('avif', 'heic', 'heif', 'bmp', 'tiff', 'tif', 'svg'):
+    if ext in NON_STANDARD_IMAGE_EXTENSIONS:
         from PIL import Image
-        img = Image.open(file.stream)
-        if img.mode in ('RGBA', 'LA', 'P'):
-            img = img.convert('RGBA')
+
+        image = Image.open(file.stream)
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGBA")
         else:
-            img = img.convert('RGB')
-        filename = f"{uuid.uuid4().hex[:12]}.png"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        img.save(filepath, 'PNG')
+            image = image.convert("RGB")
+        output = io.BytesIO()
+        image.save(output, "PNG")
+        body = output.getvalue()
+        upload_name = f"{uuid.uuid4().hex[:12]}.png"
+        content_type = "image/png"
     else:
-        filename = f"{uuid.uuid4().hex[:12]}.{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        body = file.read()
+        upload_name = f"{uuid.uuid4().hex[:12]}.{ext}"
 
-    return jsonify({"success": True, "filename": filename, "url": f"/uploads/{filename}"})
+    try:
+        stored = upload_bytes(upload_name, body, content_type)
+        return jsonify({"success": True, **stored})
+    except Exception as exc:
+        return jsonify({"error": f"上传失败: {str(exc)}"}), 500
 
 
-@app.route('/api/recognize', methods=['POST'])
+@app.route("/api/recognize", methods=["POST"])
 def recognize_reagent():
-    """Use GPT-5.4 via teamplus API to recognize reagent info from uploaded image."""
-    data = request.json
-    filename = data.get('filename')
-    if not filename:
-        return jsonify({"error": "未提供文件名"}), 400
+    data = request.json or {}
+    file_ref = data.get("file_ref") or data.get("url") or data.get("filename")
+    if not file_ref:
+        return jsonify({"error": "未提供文件引用"}), 400
 
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    if not os.path.exists(filepath):
+    try:
+        image_bytes, content_type, source_name = load_uploaded_bytes(file_ref)
+    except FileNotFoundError:
         return jsonify({"error": "文件不存在"}), 404
+    except Exception as exc:
+        return jsonify({"error": f"读取文件失败: {str(exc)}"}), 500
 
-    # Read and encode image
-    with open(filepath, 'rb') as f:
-        image_data = base64.standard_b64encode(f.read()).decode('utf-8')
+    image_data = base64.standard_b64encode(image_bytes).decode("utf-8")
+    media_type = media_type_from_name(source_name, content_type)
 
-    ext = filename.rsplit('.', 1)[1].lower()
-    media_type = f"image/{'jpeg' if ext in ('jpg', 'jpeg') else ext}"
-    db = get_db()
-    category_names = [r["name"] for r in db.execute("SELECT name FROM categories ORDER BY sort_order").fetchall()]
-    db.close()
+    session = SessionLocal()
+    try:
+        category_names = [row.name for row in session.query(Category).order_by(Category.sort_order.asc()).all()]
+    finally:
+        session.close()
 
     _, _, model = get_ai_client_config()
     try:
@@ -675,43 +893,39 @@ def recognize_reagent():
   "supplier": "供应商"
 }
 只返回JSON，不要其他文字。"""
-        prompt = prompt.replace(
-            "__CATEGORY_LIST__",
-            "、".join(category_names) if category_names else "常用试剂、危险试剂、-20°C冰箱、-80°C冰箱、实验耗材、生物样品"
-        )
+        prompt = prompt.replace("__CATEGORY_LIST__", "、".join(category_names) if category_names else "、".join(DEFAULT_CATEGORY_NAMES))
 
-        resp_data = post_chat_completion(
+        response_data = post_chat_completion(
             {
                 "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{media_type};base64,{image_data}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{media_type};base64,{image_data}",
+                                },
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ],
+                    }
+                ],
                 "max_tokens": 1024,
             },
             timeout=120,
         )
-        result = parse_model_json_content(resp_data)
+        result = parse_model_json_content(response_data)
         return jsonify({"success": True, "data": result})
+    except Exception as exc:
+        return jsonify({"error": f"识别失败: {str(exc)}"}), 500
 
-    except Exception as e:
-        return jsonify({"error": f"识别失败: {str(e)}"}), 500
 
-
-if __name__ == '__main__':
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    init_db()
+if __name__ == "__main__":
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8080"))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"

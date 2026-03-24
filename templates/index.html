@@ -808,7 +808,7 @@
                     <div v-if="scanItems.length === 0">
                         <div class="text-4xl mb-3">📸</div>
                         <p class="text-gray-600 text-sm">点击拍照或选择图片，支持批量导入</p>
-                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 16MB</p>
+                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 4MB</p>
                     </div>
                     <div v-else>
                         <div class="mb-3 text-left text-sm font-medium text-slate-700">已选择 {{scanItems.length}} 张图片</div>
@@ -905,6 +905,7 @@ createApp({
             quickFilter: '',
             scanCurrentIndex: 0,
             scanImportedCount: 0,
+            uploadMaxBytes: 4 * 1024 * 1024,
         };
     },
     computed: {
@@ -1359,10 +1360,23 @@ createApp({
                 this.showToast('最多同时导入 5 张图片');
                 return;
             }
-            const selected = files.slice(0, remaining);
+            const accepted = [];
+            let oversizedCount = 0;
+            for (const file of files) {
+                if (file.size > this.uploadMaxBytes) {
+                    oversizedCount += 1;
+                    continue;
+                }
+                accepted.push(file);
+            }
+            if (oversizedCount > 0) {
+                this.showToast(`有 ${oversizedCount} 张图片超过 4MB，Vercel 环境下无法上传`);
+            }
+            const selected = accepted.slice(0, remaining);
             if (files.length > remaining) {
                 this.showToast('已限制为最多 5 张图片');
             }
+            if (!selected.length) return;
             const items = await Promise.all(selected.map(file => this.createScanItem(file)));
             this.scanItems.push(...items);
             this.scanStatus = null;
@@ -1408,14 +1422,18 @@ createApp({
             const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
             const uploadData = await uploadRes.json();
             if (!uploadData.success) throw new Error(uploadData.error || '上传失败');
-            item.filename = uploadData.filename;
+            item.filename = uploadData.file_ref || uploadData.filename || uploadData.url;
 
             this.scanStatus = 'recognizing';
             item.status = 'recognizing';
             const recRes = await fetch('/api/recognize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: uploadData.filename })
+                body: JSON.stringify({
+                    file_ref: uploadData.file_ref || uploadData.url || uploadData.filename,
+                    url: uploadData.url,
+                    filename: uploadData.filename,
+                })
             });
             const recData = await recRes.json();
             if (!recData.success) throw new Error(recData.error || '识别失败');
