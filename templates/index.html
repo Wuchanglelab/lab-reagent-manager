@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实验室试剂管理系统</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f5f5f5;
+            --panel: rgba(255, 255, 255, 0.88);
+            --panel-strong: #ffffff;
+            --line: rgba(15, 23, 42, 0.12);
+            --text: #111111;
+            --muted: #666666;
+            --danger: #dc2626;
+            --shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
+        }
+        [v-cloak] { display: none; }
+        html { background: var(--bg); }
+        body {
+            margin: 0;
+            color: var(--text);
+            font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(180deg, #fafafa 0%, #f2f2f2 100%);
+        }
+        .app-shell {
+            min-height: 100vh;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,0.35), rgba(255,255,255,0.35)),
+                repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 88px);
+        }
+        .sidebar-shell {
+            position: relative;
+            background: linear-gradient(180deg, #111111 0%, #1d1d1d 100%);
+        }
+        .sidebar-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0));
+            pointer-events: none;
+        }
+        .glass-panel {
+            background: var(--panel);
+            backdrop-filter: blur(22px);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+        .sidebar-item {
+            transition: all 0.18s ease;
+            border: 1px solid transparent;
+        }
+        .sidebar-item:hover,
+        .sidebar-item.active {
+            background: rgba(255,255,255,0.18);
+            border-color: rgba(255,255,255,0.2);
+            transform: translateX(2px);
+        }
+        .sidebar-section-label {
+            color: rgba(255, 255, 255, 0.72);
+        }
+        .sidebar-muted {
+            color: rgba(255, 255, 255, 0.92);
+        }
+        .sidebar-soft {
+            color: rgba(255, 255, 255, 0.72);
+        }
+        .sidebar-badge {
+            background: rgba(255,255,255,0.16);
+            color: #f8fafc;
+            border: 1px solid rgba(255,255,255,0.16);
+        }
+        .stat-card {
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+        }
+        .section-card {
+            background: rgba(255,255,255,0.92);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 1.25rem;
+            box-shadow: 0 20px 50px rgba(148, 163, 184, 0.12);
+        }
+        .metric-ring {
+            position: relative;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 9999px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.04));
+            color: #111111;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.22rem 0.7rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+        .toolbar-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.45rem 0.8rem;
+            border-radius: 9999px;
+            background: rgba(255,255,255,0.92);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            color: #0f172a;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .clickable {
+            cursor: pointer;
+        }
+        .drop-zone {
+            border: 1.5px dashed rgba(0, 0, 0, 0.24);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(245, 245, 245, 0.9));
+            transition: all 0.2s;
+        }
+        .drop-zone:hover,
+        .drop-zone.dragging {
+            border-color: #111111;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(240, 240, 240, 0.95));
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+        }
+        .table-row {
+            transition: background 0.12s ease;
+        }
+        .table-row:hover {
+            background: rgba(248, 250, 252, 0.95);
+        }
+        .data-table {
+            min-width: 980px;
+        }
+        .soft-grid {
+            background-image:
+                linear-gradient(rgba(148,163,184,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(148,163,184,0.04) 1px, transparent 1px);
+            background-size: 28px 28px;
+            background-position: -1px -1px;
+        }
+        .modal-overlay {
+            background: rgba(15, 23, 42, 0.42);
+            backdrop-filter: blur(10px);
+            overflow-y: auto;
+        }
+        .modal-frame {
+            display: flex;
+            flex-direction: column;
+            max-height: none;
+        }
+        .modal-scroll {
+            overflow: visible;
+            overscroll-behavior: auto;
+        }
+        .btn-primary {
+            min-width: 124px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.65rem 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid #111111;
+            background: #111111;
+            color: #ffffff;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        .btn-primary:disabled {
+            background: #7a7a7a;
+            border-color: #7a7a7a;
+            color: #ffffff;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            min-width: 96px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.65rem 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid #d4d4d4;
+            background: #ffffff;
+            color: #111111;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .status-dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 9999px;
+            display: inline-block;
+            background: #111111;
+        }
+        input, select, textarea {
+            background: rgba(255,255,255,0.96);
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.7);
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body>
+<div id="app" v-cloak class="app-shell">
+    <div class="lg:flex">
+        <aside class="lg:sticky lg:top-4 lg:self-start lg:w-72 text-white z-30">
+            <div class="sidebar-shell mx-4 mt-4 mb-0 rounded-[1.75rem] shadow-2xl lg:m-4 lg:max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <div class="soft-grid h-full flex flex-col">
+                    <div class="px-6 pt-6 pb-5 border-b border-white/10">
+                        <div class="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1 text-[11px] tracking-[0.22em] uppercase sidebar-muted">
+                            Lab Ops Console
+                        </div>
+                        <h1 class="mt-4 text-2xl font-bold leading-tight">实验室试剂管理系统</h1>
+                        <p class="mt-2 text-sm sidebar-muted">为科研团队整理库存、风险和领用流程。</p>
+                    </div>
+                    <nav class="px-4 py-5 space-y-2">
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': currentView === 'dashboard'}" @click="currentView='dashboard'">
+                            <span class="text-lg">📊</span><span class="text-sm font-medium">仪表盘</span>
+                        </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': currentView === 'reagents' && !filterCategory}" @click="currentView='reagents'; filterCategory=''; loadReagents()">
+                            <span class="text-lg">🧪</span><span class="text-sm font-medium">全部试剂</span>
+                            <span class="sidebar-badge ml-auto rounded-full px-2 py-0.5 text-[11px]">{{reagents.length}}</span>
+                        </div>
+                        <div class="sidebar-section-label px-4 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em]">分类导航</div>
+                        <div v-for="cat in categories" :key="cat.id"
+                             class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': isCategoryActive(cat.name)}"
+                             @click="openCategoryFilter(cat.name)">
+                            <span class="text-lg">{{cat.icon}}</span>
+                            <span class="text-sm">{{cat.name}}</span>
+                            <span class="sidebar-soft ml-auto text-xs">{{getCategoryCount(cat.name)}}</span>
+                        </div>
+                        <div class="sidebar-section-label px-4 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em]">快捷操作</div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             @click="openAddModal()">
+                            <span class="text-lg">➕</span><span class="text-sm">新增试剂</span>
+                        </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             @click="openScanModal()">
+                            <span class="text-lg">📷</span><span class="text-sm">拍照入库</span>
+                        </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': currentView === 'records'}" @click="currentView='records'; loadUsageRecords()">
+                            <span class="text-lg">📝</span><span class="text-sm">使用记录</span>
+                        </div>
+                    </nav>
+                    <div class="mt-auto mx-4 mb-4 rounded-2xl border border-white/15 bg-white/12 p-4">
+                        <div class="sidebar-muted text-xs uppercase tracking-[0.2em]">安全提示</div>
+                        <div class="mt-2 text-sm font-medium">危险试剂 {{stats.hazardous || 0}} 项</div>
+                        <div class="sidebar-soft mt-1 text-xs">建议优先核查库存不足与临近有效期的条目。</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="min-h-screen w-full">
+            <div class="px-4 pb-8 pt-4 lg:px-8 lg:pt-6">
+                <div class="glass-panel sticky top-3 z-20 rounded-[1.6rem] px-4 py-4 lg:px-6">
+                    <div class="flex flex-col gap-4 xl:flex-row xl:items-center">
+                        <div class="flex-1">
+                            <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Inventory Command Center</div>
+                            <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <h2 class="text-2xl font-bold text-slate-900">{{ currentView === 'dashboard' ? '仪表盘概览' : currentView === 'records' ? '使用记录追踪' : (filterCategory || '全部试剂') }}</h2>
+                                    <p class="mt-1 text-sm text-slate-600">聚焦库存状态、风险等级和近期流转记录。</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <span class="toolbar-chip clickable" @click="openReagentView('all')">总试剂 {{stats.total || 0}}</span>
+                                    <span class="toolbar-chip clickable" @click="openReagentView('low_stock')">库存不足 {{stats.low_stock || 0}}</span>
+                                    <span class="toolbar-chip clickable" @click="openReagentView('expiring_soon')">即将过期 {{stats.expiring_soon || 0}}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+                            <div class="relative w-full lg:w-96">
+                                <input v-model="searchQuery" @input="debounceSearch"
+                                       class="w-full rounded-2xl border border-slate-200 bg-white/90 pl-11 pr-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                                       placeholder="搜索试剂名称、CAS号、货号...">
+                                <svg class="w-4 h-4 text-slate-400 absolute left-4 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </div>
+                            <button @click="openAddModal()" class="rounded-2xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-900">
+                                ➕ 新增试剂
+                            </button>
+                            <button @click="openScanModal()" class="rounded-2xl border border-black bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-gray-100">
+                                📷 拍照入库
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="currentView === 'dashboard'" class="pt-6 space-y-6">
+                    <section class="relative overflow-hidden rounded-[1.75rem] border border-gray-200 bg-gradient-to-br from-white via-gray-50 to-gray-100 px-6 py-8 text-slate-900 shadow-2xl lg:px-8">
+                        <div class="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-gray-200/18 to-transparent"></div>
+                        <div class="relative">
+                            <div>
+                                <div class="inline-flex items-center rounded-full border border-gray-300 bg-white px-3 py-1 text-xs tracking-[0.22em] uppercase text-gray-700">Research Storage Overview</div>
+                                <div class="mt-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                    <div class="max-w-3xl">
+                                        <h3 class="text-3xl font-bold leading-tight">{{inspectionHeadline}}</h3>
+                                        <p class="mt-3 text-sm text-slate-600">{{inspectionSummary}}</p>
+                                        <div v-if="aiInspection && aiInspection.actions && aiInspection.actions.length" class="mt-4 space-y-2">
+                                            <div v-for="(action, idx) in aiInspection.actions.slice(0, 3)" :key="idx" class="flex items-start gap-2 text-sm text-slate-700">
+                                                <span class="mt-1 h-1.5 w-1.5 rounded-full bg-black"></span>
+                                                <span>{{action}}</span>
+                                            </div>
+                                        </div>
+                                        <div v-if="aiInspectionError" class="mt-4 text-sm text-red-600">{{aiInspectionError}}</div>
+                                    </div>
+                                    <div class="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-700">
+                                        <div class="flex items-center gap-2 font-medium text-slate-900">
+                                            <span class="status-dot"></span>
+                                            {{ inspectionStatusLabel }}
+                                        </div>
+                                        <div class="mt-1 text-xs text-slate-500">{{inspectionStatusDetail}}</div>
+                                    </div>
+                                </div>
+                                <div class="mt-6 flex flex-wrap gap-3">
+                                    <button @click="runAiInspectionReview()" class="rounded-2xl border border-black bg-black px-5 py-3 text-sm font-medium text-white hover:bg-gray-900" :disabled="aiInspectionLoading">
+                                        {{ aiInspectionLoading ? 'AI审核中...' : 'AI审核库存' }}
+                                    </button>
+                                    <button @click="confirmInspection()" class="rounded-2xl border border-gray-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100">
+                                        {{ needsInspectionConfirmation ? '确认今日巡检' : '已完成今日巡检' }}
+                                    </button>
+                                    <button @click="openAddModal()" class="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100">录入新试剂</button>
+                                    <button @click="openReagentView('all')" class="rounded-2xl border border-black bg-black px-5 py-3 text-sm font-medium text-white hover:bg-gray-900">查看全部清单</button>
+                                </div>
+                            </div>
+                            <div class="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openReagentView('low_stock')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">不足库存</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.low_stock || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">建议优先补货</div>
+                                </div>
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openReagentView('hazardous')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">危险试剂</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.hazardous || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">需重点标识</div>
+                                </div>
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openReagentView('out_of_stock')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">已用完</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.out_of_stock || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">待补充或归档</div>
+                                </div>
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openReagentView('expiring_soon')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">30天内到期</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.expiring_soon || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">需尽快复核</div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                        <div class="section-card stat-card clickable p-5" @click="openReagentView('all')">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm text-slate-500">试剂总数</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.total || 0}}</div>
+                                </div>
+                                <div class="metric-ring">🧪</div>
+                            </div>
+                            <div class="mt-4 text-xs text-slate-400">已登记条目总量</div>
+                        </div>
+                        <div class="section-card stat-card clickable p-5" @click="openReagentView('low_stock')">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm text-slate-500">库存不足</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.low_stock || 0}}</div>
+                                </div>
+                                <div class="metric-ring">⚠️</div>
+                            </div>
+                            <div class="mt-4 text-xs text-slate-400">低于建议安全余量</div>
+                        </div>
+                        <div class="section-card stat-card clickable p-5" @click="openReagentView('out_of_stock')">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm text-slate-500">已用完</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.out_of_stock || 0}}</div>
+                                </div>
+                                <div class="metric-ring">⛔</div>
+                            </div>
+                            <div class="mt-4 text-xs text-slate-400">库存归零待处理</div>
+                        </div>
+                        <div class="section-card stat-card clickable p-5" @click="openReagentView('hazardous')">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm text-slate-500">危险试剂</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.hazardous || 0}}</div>
+                                </div>
+                                <div class="metric-ring">☣️</div>
+                            </div>
+                            <div class="mt-4 text-xs text-slate-400">需要重点安全管理</div>
+                        </div>
+                        <div class="section-card stat-card clickable p-5" @click="openReagentView('expiring_soon')">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm text-slate-500">即将过期</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.expiring_soon || 0}}</div>
+                                </div>
+                                <div class="metric-ring">⏳</div>
+                            </div>
+                            <div class="mt-4 text-xs text-slate-400">30 天内到期的项目</div>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+                        <div class="section-card p-6">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-lg font-semibold text-slate-900">分类统计</h3>
+                                    <p class="mt-1 text-sm text-slate-500">按类别查看试剂分布密度，方便调整存储规划。</p>
+                                </div>
+                                <span class="toolbar-chip">共 {{stats.total || 0}} 条</span>
+                            </div>
+                            <div class="mt-6 space-y-4">
+                                <div v-for="cs in stats.category_stats" :key="cs.category" class="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div class="flex items-center gap-3">
+                                            <div class="grid h-10 w-10 place-items-center rounded-2xl bg-white text-lg shadow-sm">{{getCategoryIcon(cs.category)}}</div>
+                                            <div>
+                                                <div class="font-medium text-slate-800">{{cs.category}}</div>
+                                                <div class="text-xs text-slate-400">{{cs.count}} 种试剂</div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-4">
+                                            <div class="h-2.5 w-40 rounded-full bg-slate-200">
+                                                <div class="h-2.5 rounded-full" :style="{width: Math.min(100, cs.count / Math.max(stats.total, 1) * 100) + '%', background: getCategoryColor(cs.category)}"></div>
+                                            </div>
+                                            <button @click="openCategoryFilter(cs.category)" class="text-sm font-medium text-slate-900 hover:text-black underline">查看</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="!stats.category_stats || stats.category_stats.length === 0" class="py-12 text-center text-sm text-slate-400">
+                                    暂无数据，请先添加试剂
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-6">
+                            <div class="section-card p-6">
+                                <h3 class="text-lg font-semibold text-slate-900">快速操作</h3>
+                                <div class="mt-4 grid gap-3">
+                                    <button @click="openAddModal()" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-300 hover:bg-slate-50">
+                                        <div class="text-sm font-medium text-slate-800">手动新增试剂</div>
+                                        <div class="mt-1 text-xs text-slate-400">补录品牌、货号、库存和有效期</div>
+                                    </button>
+                                    <button @click="openScanModal()" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-300 hover:bg-slate-50">
+                                        <div class="text-sm font-medium text-slate-800">拍照识别入库</div>
+                                        <div class="mt-1 text-xs text-slate-500">从试剂瓶标签提取基础信息</div>
+                                    </button>
+                                    <button @click="currentView='records'; loadUsageRecords()" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-300 hover:bg-slate-50">
+                                        <div class="text-sm font-medium text-slate-800">查看最近流转</div>
+                                        <div class="mt-1 text-xs text-slate-400">快速定位领用与入库记录</div>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="section-card p-6">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-lg font-semibold text-slate-900">最近操作记录</h3>
+                                    <span class="text-xs text-slate-400">最近 {{ (stats.recent_usage || []).length }} 条</span>
+                                </div>
+                                <div class="mt-4 space-y-3">
+                                    <div v-for="r in stats.recent_usage" :key="r.id" class="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                                        <div class="flex items-start gap-3">
+                                            <div class="grid h-10 w-10 place-items-center rounded-2xl" :class="r.action === '入库' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+                                                {{r.action === '入库' ? '↘' : '↗'}}
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <span class="font-medium text-slate-800">{{r.reagent_name}}</span>
+                                                    <span :class="r.action === '入库' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'" class="badge">{{r.action}}</span>
+                                                </div>
+                                                <div class="mt-1 text-sm text-slate-500">数量 ×{{formatUsageRecord(r)}} · {{r.user_name}}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-if="!stats.recent_usage || stats.recent_usage.length === 0" class="py-10 text-center text-sm text-slate-400">
+                                        暂无操作记录
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <div v-if="currentView === 'reagents'" class="pt-6 space-y-5">
+                    <section class="section-card overflow-hidden">
+                        <div class="border-b border-slate-100 px-6 py-5">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Reagent Inventory</div>
+                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">{{filterCategory || '全部试剂'}}</h3>
+                                    <p class="mt-1 text-sm text-slate-500">当前共 {{filteredReagents.length}} 条记录，支持搜索、领用、编辑和删除。</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <span v-if="filterCategory" class="toolbar-chip">{{filterCategory}}</span>
+                                    <span v-if="searchQuery" class="toolbar-chip">关键词: {{searchQuery}}</span>
+                                    <span v-if="quickFilterLabel" class="toolbar-chip">{{quickFilterLabel}}</span>
+                                    <span class="toolbar-chip">危险试剂 {{stats.hazardous || 0}}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="data-table w-full text-sm">
+                                <thead class="bg-slate-50 text-slate-500">
+                                    <tr>
+                                        <th class="text-left px-5 py-4 font-semibold">名称</th>
+                                        <th class="text-left px-5 py-4 font-semibold">CAS号</th>
+                                        <th class="text-left px-5 py-4 font-semibold">品牌 / 货号</th>
+                                        <th class="text-left px-5 py-4 font-semibold">规格</th>
+                                        <th class="text-left px-5 py-4 font-semibold">库存</th>
+                                        <th class="text-left px-5 py-4 font-semibold">存储位置</th>
+                                        <th class="text-left px-5 py-4 font-semibold">危险等级</th>
+                                        <th class="text-left px-5 py-4 font-semibold">有效期</th>
+                                        <th class="text-center px-5 py-4 font-semibold">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in filteredReagents" :key="r.id" class="table-row border-t border-slate-100">
+                                        <td class="px-5 py-4">
+                                            <div class="font-semibold text-slate-800">{{r.name}}</div>
+                                            <div v-if="r.name_en" class="mt-1 text-xs text-slate-400">{{r.name_en}}</div>
+                                        </td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.cas_number || '-'}}</td>
+                                        <td class="px-5 py-4">
+                                            <div class="text-slate-700">{{r.brand || '-'}}</div>
+                                            <div v-if="r.catalog_number" class="mt-1 text-xs text-slate-400">{{r.catalog_number}}</div>
+                                        </td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.specification || '-'}} {{r.purity ? '('+r.purity+')' : ''}}</td>
+                                        <td class="px-5 py-4">
+                                            <span :class="r.quantity <= 0 ? 'text-red-500 font-bold' : isLowStock(r) ? 'text-amber-500 font-semibold' : 'text-slate-700'">
+                                                {{formatRemainingAmount(r.quantity, r.unit, r.specification)}}
+                                            </span>
+                                        </td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.storage_location || '-'}}</td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge" :class="hazardClass(r.hazard_level)">{{r.hazard_level}}</span>
+                                        </td>
+                                        <td class="px-5 py-4" :class="isExpiryAttention(r.expiry_date) ? 'text-red-500 font-medium' : 'text-slate-600'">
+                                            {{r.expiry_date || '-'}}
+                                        </td>
+                                        <td class="px-5 py-4 text-center">
+                                            <div class="flex items-center justify-center gap-2">
+                                                <button @click="openUseModal(r)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">领用</button>
+                                                <button @click="openEditModal(r)" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">编辑</button>
+                                                <button @click="deleteReagent(r)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-100">删除</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="filteredReagents.length === 0">
+                                        <td colspan="9" class="px-6 py-16">
+                                            <div class="mx-auto max-w-md text-center">
+                                                <div class="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-slate-100 text-2xl">🧪</div>
+                                                <div class="mt-4 text-lg font-semibold text-slate-700">当前没有匹配的试剂记录</div>
+                                                <div class="mt-2 text-sm text-slate-400">可以尝试更换关键词，或者直接新增试剂、拍照入库。</div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+
+                <div v-if="currentView === 'records'" class="pt-6 space-y-5">
+                    <section class="section-card overflow-hidden">
+                        <div class="border-b border-slate-100 px-6 py-5">
+                            <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Usage Timeline</div>
+                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">使用记录</h3>
+                                    <p class="mt-1 text-sm text-slate-500">记录近期领用与入库的流转信息，便于追踪责任人与用途。</p>
+                                </div>
+                                <span class="toolbar-chip">显示最近 {{usageRecords.length}} 条</span>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="data-table w-full text-sm">
+                                <thead class="bg-slate-50 text-slate-500">
+                                    <tr>
+                                        <th class="text-left px-5 py-4 font-semibold">时间</th>
+                                        <th class="text-left px-5 py-4 font-semibold">操作</th>
+                                        <th class="text-left px-5 py-4 font-semibold">试剂</th>
+                                        <th class="text-left px-5 py-4 font-semibold">数量</th>
+                                        <th class="text-left px-5 py-4 font-semibold">操作人</th>
+                                        <th class="text-left px-5 py-4 font-semibold">用途</th>
+                                        <th class="text-left px-5 py-4 font-semibold">备注</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="r in usageRecords" :key="r.id" class="table-row border-t border-slate-100">
+                                        <td class="px-5 py-4 text-slate-500">{{r.created_at}}</td>
+                                        <td class="px-5 py-4">
+                                            <span class="badge" :class="r.action === '入库' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'">{{r.action}}</span>
+                                        </td>
+                                        <td class="px-5 py-4 font-medium text-slate-800">{{r.reagent_name}}</td>
+                                        <td class="px-5 py-4 text-slate-600">{{formatUsageRecord(r)}}</td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.user_name}}</td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.purpose || '-'}}</td>
+                                        <td class="px-5 py-4 text-slate-400">{{r.notes || '-'}}</td>
+                                    </tr>
+                                    <tr v-if="usageRecords.length === 0">
+                                        <td colspan="7" class="px-6 py-16 text-center text-slate-400">暂无使用记录</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Reagent Modal -->
+    <div v-if="showReagentModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showReagentModal=false">
+        <div class="modal-frame w-full max-w-2xl rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-800">{{editingReagent ? '编辑试剂' : '新增试剂'}}</h3>
+                <button @click="showReagentModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div class="modal-scroll p-6 space-y-4 bg-slate-50/55">
+                <div v-if="form.image_path && !editingReagent" class="rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+                    AI 已识别并填充表单。请核对信息后，点击底部右侧“确认添加”完成入库。
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">中文名称 *</label>
+                        <input v-model="form.name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：氯化钠">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">英文名称</label>
+                        <input v-model="form.name_en" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="Sodium Chloride">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">CAS号</label>
+                        <input v-model="form.cas_number" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="7647-14-5">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">货号</label>
+                        <input v-model="form.catalog_number" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="产品编号">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">品牌</label>
+                        <input v-model="form.brand" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="Sigma-Aldrich">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">供应商</label>
+                        <input v-model="form.supplier" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="供应商名称">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">规格</label>
+                        <input v-model="form.specification" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="500mL / 25g">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">纯度</label>
+                        <input v-model="form.purity" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="AR / ≥99%">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">数量</label>
+                        <div class="flex gap-2">
+                            <input v-model.number="form.quantity" type="number" min="0" step="0.5" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="0">
+                            <select v-model="form.unit" class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                <option>瓶</option><option>盒</option><option>袋</option><option>支</option><option>个</option><option>包</option><option>kg</option><option>g</option><option>mL</option><option>L</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">预警库存</label>
+                        <input v-model.number="form.low_stock_threshold" type="number" min="0" step="0.5" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="默认 1，填 0 表示不提醒库存不足">
+                        <div class="mt-1 text-[11px] text-slate-500">一瓶能用很久的试剂，可设为 0，系统将不再提示库存不足。</div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">分类 *</label>
+                        <select v-model="form.category" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <option v-for="cat in categories" :key="cat.id" :value="cat.name">{{cat.icon}} {{cat.name}}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">存储位置</label>
+                        <input v-model="form.storage_location" list="storage-location-options" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：A区-2号柜-3层">
+                        <datalist id="storage-location-options">
+                            <option v-for="location in storageLocations" :key="location" :value="location"></option>
+                        </datalist>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">存储温度</label>
+                        <input v-model="form.storage_temp" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="室温 / 2-8°C / -20°C">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">危险等级</label>
+                        <select v-model="form.hazard_level" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <option>普通</option><option>易燃</option><option>腐蚀</option><option>有毒</option><option>剧毒</option><option>易爆</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">有效期</label>
+                        <input v-model="form.expiry_date" type="date" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">价格 (元)</label>
+                        <input v-model.number="form.price" type="number" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">危险信息</label>
+                    <input v-model="form.hazard_info" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="GHS警示信息">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">备注</label>
+                    <textarea v-model="form.notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="其他备注信息"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 bg-white">
+                <div v-if="!editingReagent" class="mb-3 text-xs text-slate-500">
+                    填完或核对完信息后，点击右下角“确认添加”
+                </div>
+                <div v-else class="mb-3 text-xs text-slate-500">
+                    修改完成后，点击右下角“保存修改”
+                </div>
+                <div class="flex items-center justify-end gap-3">
+                    <button @click="showReagentModal=false" class="btn-secondary">取消</button>
+                    <button @click="saveReagent()" class="btn-primary" :disabled="!form.name">
+                        {{editingReagent ? '保存修改' : '确认添加'}}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Use/Restock Modal -->
+    <div v-if="showUseModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showUseModal=false">
+        <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100">
+                <h3 class="text-lg font-bold text-gray-800">试剂领用/入库</h3>
+                <p class="text-sm text-gray-500 mt-1">{{useForm.reagent_name}} (当前库存: {{formatRemainingAmount(useForm.current_qty, useForm.stock_unit, useForm.specification)}})</p>
+                <p v-if="useForm.packageHint" class="mt-2 text-xs text-slate-500">{{useForm.packageHint}}</p>
+            </div>
+            <div class="p-6 space-y-4 bg-slate-50/55">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">操作类型</label>
+                    <div class="flex gap-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="useForm.action" value="领用" class="text-blue-600"> <span class="text-sm">领用</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="useForm.action" value="入库" class="text-blue-600"> <span class="text-sm">入库</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">数量</label>
+                    <div class="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
+                        <input v-model.number="useForm.quantity" type="number" min="0.01" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                        <select v-model="useForm.usage_unit" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <option v-for="option in useForm.usageUnitOptions" :key="option.value" :value="option.value">{{option.label}}</option>
+                        </select>
+                    </div>
+                </div>
+                <div v-if="usagePreviewState.text" class="rounded-xl border px-3 py-2 text-xs"
+                     :class="usagePreviewState.error ? 'border-red-200 bg-red-50 text-red-600' : 'border-slate-200 bg-white text-slate-500'">
+                    {{usagePreviewState.text}}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">操作人 *</label>
+                    <input v-model="useForm.user_name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="您的姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">用途</label>
+                    <input v-model="useForm.purpose" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="实验用途">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">备注</label>
+                    <input v-model="useForm.notes" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button @click="showUseModal=false" class="btn-secondary">取消</button>
+                <button @click="submitUsage()" class="btn-primary" :disabled="!useForm.user_name || !useForm.quantity || !useForm.usage_unit">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Scan Modal -->
+    <div v-if="showScanModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showScanModal=false">
+        <div class="w-full max-w-lg rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-800">📷 拍照识别入库</h3>
+                <button @click="showScanModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div class="p-6 space-y-4 bg-slate-50/55">
+                <div class="drop-zone rounded-xl p-8 text-center cursor-pointer" :class="{'dragging': isDragging}"
+                     @click="$refs.fileInput.click()"
+                     @dragover.prevent="isDragging=true" @dragleave="isDragging=false"
+                     @drop.prevent="isDragging=false; handleDrop($event)">
+                    <input ref="fileInput" type="file" multiple accept="image/*,.avif,.heic,.heif" capture="environment" class="hidden" @change="handleFileSelect">
+                    <div v-if="scanItems.length === 0">
+                        <div class="text-4xl mb-3">📸</div>
+                        <p class="text-gray-600 text-sm">点击拍照或选择图片，支持批量导入</p>
+                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 16MB</p>
+                    </div>
+                    <div v-else>
+                        <div class="mb-3 text-left text-sm font-medium text-slate-700">已选择 {{scanItems.length}} 张图片</div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div v-for="item in scanItems" :key="item.id" class="rounded-2xl border border-slate-200 bg-white p-3 text-left">
+                                <img :src="item.preview" class="h-24 w-full rounded-lg object-cover shadow-sm">
+                                <div class="mt-2 truncate text-xs font-medium text-slate-700">{{item.file.name}}</div>
+                                <div class="mt-1 text-[11px]"
+                                     :class="item.status === 'error' ? 'text-red-500' : item.status === 'imported' || item.status === 'done' ? 'text-green-600' : 'text-slate-500'">
+                                    {{scanItemStatusLabel(item)}}
+                                </div>
+                                <button v-if="!scanBusy" @click.stop="removeScanItem(item.id)" class="mt-2 text-[11px] text-slate-500 underline">移除</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="scanStatus" class="text-center py-3">
+                    <div v-if="scanStatus === 'uploading'" class="text-blue-600 text-sm">⏳ 正在上传图片（{{scanProgressText}}）...</div>
+                    <div v-if="scanStatus === 'recognizing'" class="text-blue-600 text-sm">🤖 AI正在识别图片（{{scanProgressText}}）...</div>
+                    <div v-if="scanStatus === 'done' && scanItems.length === 1" class="text-green-600 text-sm">✅ 识别完成！信息已填充到表单</div>
+                    <div v-if="scanStatus === 'done' && scanItems.length > 1" class="text-green-600 text-sm">✅ 批量导入完成：成功 {{scanImportedCount}} / {{scanItems.length}}</div>
+                    <div v-if="scanStatus === 'error'" class="text-red-500 text-sm">❌ {{scanError}}</div>
+                </div>
+
+                <button v-if="scanItems.length > 0 && !scanBusy"
+                        @click="startRecognize()" class="btn-primary w-full">
+                    {{ scanItems.length > 1 ? '🤖 开始批量识别并导入' : '🤖 开始AI识别' }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div v-if="toast" class="fixed bottom-6 right-6 z-50 rounded-2xl bg-slate-900/95 px-5 py-3 text-sm text-white shadow-2xl backdrop-blur flex items-center gap-2">
+        <span>{{toast}}</span>
+    </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+const UNIT_DEFS = {
+    瓶: { dimension: 'count', factor: 1, unit: '瓶' },
+    盒: { dimension: 'count', factor: 1, unit: '盒' },
+    袋: { dimension: 'count', factor: 1, unit: '袋' },
+    支: { dimension: 'count', factor: 1, unit: '支' },
+    个: { dimension: 'count', factor: 1, unit: '个' },
+    包: { dimension: 'count', factor: 1, unit: '包' },
+    ml: { dimension: 'volume', factor: 1, unit: 'mL' },
+    mL: { dimension: 'volume', factor: 1, unit: 'mL' },
+    l: { dimension: 'volume', factor: 1000, unit: 'L' },
+    L: { dimension: 'volume', factor: 1000, unit: 'L' },
+    ul: { dimension: 'volume', factor: 0.001, unit: 'uL' },
+    uL: { dimension: 'volume', factor: 0.001, unit: 'uL' },
+    μl: { dimension: 'volume', factor: 0.001, unit: 'μL' },
+    μL: { dimension: 'volume', factor: 0.001, unit: 'μL' },
+    g: { dimension: 'mass', factor: 1, unit: 'g' },
+    kg: { dimension: 'mass', factor: 1000, unit: 'kg' },
+    mg: { dimension: 'mass', factor: 0.001, unit: 'mg' },
+};
+const UNIT_GROUPS = {
+    volume: ['mL', 'L', 'uL'],
+    mass: ['g', 'kg', 'mg'],
+};
+const CONTAINER_UNITS = ['瓶', '盒', '袋', '支', '个', '包'];
+
+createApp({
+    data() {
+        return {
+            currentView: 'dashboard',
+            categories: [],
+            storageLocations: [],
+            reagents: [],
+            usageRecords: [],
+            stats: {},
+            searchQuery: '',
+            filterCategory: '',
+            showReagentModal: false,
+            showUseModal: false,
+            showScanModal: false,
+            editingReagent: null,
+            form: this.emptyForm(),
+            useForm: this.emptyUseForm(),
+            scanItems: [],
+            scanStatus: null,
+            scanError: '',
+            isDragging: false,
+            toast: null,
+            searchTimer: null,
+            lastInspectionConfirmedAt: null,
+            aiInspection: null,
+            aiInspectionLoading: false,
+            aiInspectionError: '',
+            quickFilter: '',
+            scanCurrentIndex: 0,
+            scanImportedCount: 0,
+        };
+    },
+    computed: {
+        scanBusy() {
+            return this.scanStatus === 'uploading' || this.scanStatus === 'recognizing';
+        },
+        scanProgressText() {
+            return `${Math.min(this.scanCurrentIndex + 1, Math.max(this.scanItems.length, 1))}/${Math.max(this.scanItems.length, 1)}`;
+        },
+        filteredReagents() {
+            let list = [...this.reagents];
+            if (this.quickFilter === 'low_stock') {
+                list = list.filter(r => this.isLowStock(r));
+            } else if (this.quickFilter === 'out_of_stock') {
+                list = list.filter(r => (r.quantity || 0) <= 0);
+            } else if (this.quickFilter === 'hazardous') {
+                list = list.filter(r => (r.hazard_level || '普通') !== '普通');
+            } else if (this.quickFilter === '-20_storage') {
+                list = list.filter(r => (r.storage_temp || '').includes('-20'));
+            } else if (this.quickFilter === '-80_storage') {
+                list = list.filter(r => (r.storage_temp || '').includes('-80'));
+            } else if (this.quickFilter === 'expiring_soon') {
+                list = list.filter(r => this.isExpiryAttention(r.expiry_date));
+            }
+            return list;
+        },
+        quickFilterLabel() {
+            const labels = {
+                low_stock: '筛选: 库存不足',
+                out_of_stock: '筛选: 已用完',
+                hazardous: '筛选: 危险试剂',
+                '-20_storage': '筛选: -20°C冰箱',
+                '-80_storage': '筛选: -80°C冰箱',
+                expiring_soon: '筛选: 临期/已过期',
+            };
+            return labels[this.quickFilter] || '';
+        },
+        needsInspectionConfirmation() {
+            if (!this.lastInspectionConfirmedAt) return true;
+            const last = new Date(this.lastInspectionConfirmedAt).getTime();
+            if (Number.isNaN(last)) return true;
+            return Date.now() - last >= 24 * 60 * 60 * 1000;
+        },
+        inspectionHeadline() {
+            if (this.aiInspection && this.aiInspection.headline) {
+                return this.aiInspection.headline;
+            }
+            const total = this.stats.total || 0;
+            const low = this.stats.low_stock || 0;
+            const hazardous = this.stats.hazardous || 0;
+            const expiring = this.stats.expiring_soon || 0;
+            const out = this.stats.out_of_stock || 0;
+
+            if (low > 0 || out > 0) {
+                return `当前有 ${low + out} 项库存异常，建议优先核对缺货与低库存试剂。`;
+            }
+            if (hazardous > 0 && expiring > 0) {
+                return `危险试剂与临期试剂都存在，今天应优先复核安全与有效期。`;
+            }
+            if (hazardous > 0) {
+                return `当前登记了 ${hazardous} 项危险试剂，建议优先完成标签与存放检查。`;
+            }
+            if (expiring > 0) {
+                return `有 ${expiring} 项试剂将在 30 天内到期，建议今天优先复核。`;
+            }
+            if (total === 0) {
+                return '当前还没有库存记录，建议先录入试剂基础信息。';
+            }
+            return `当前库存整体稳定，共登记 ${total} 项试剂，可执行例行巡检确认。`;
+        },
+        inspectionSummary() {
+            if (this.aiInspection && this.aiInspection.summary) {
+                return this.aiInspection.summary;
+            }
+            const low = this.stats.low_stock || 0;
+            const hazardous = this.stats.hazardous || 0;
+            const expiring = this.stats.expiring_soon || 0;
+            const out = this.stats.out_of_stock || 0;
+            const parts = [];
+
+            if (low > 0) parts.push(`库存不足 ${low} 项`);
+            if (out > 0) parts.push(`已用完 ${out} 项`);
+            if (hazardous > 0) parts.push(`危险试剂 ${hazardous} 项`);
+            if (expiring > 0) parts.push(`即将过期 ${expiring} 项`);
+
+            if (parts.length === 0) {
+                return this.needsInspectionConfirmation
+                    ? '过去 24 小时尚未完成巡检确认。请核对一次库存与有效期后点击“确认今日巡检”。'
+                    : '过去 24 小时内已完成巡检确认。如有新增入库或领用，系统会在下一次确认窗口继续提醒。';
+            }
+
+            return `${parts.join('，')}。请先处理这些项目，再完成今天的巡检确认。`;
+        },
+        inspectionStatusLabel() {
+            if (this.aiInspection && this.aiInspection.risk_level) {
+                return `AI审核风险等级：${this.aiInspection.risk_level}`;
+            }
+            return this.needsInspectionConfirmation ? '待确认今日巡检' : '今日巡检已确认';
+        },
+        inspectionStatusDetail() {
+            if (this.aiInspection && this.aiInspection.checked_at) {
+                return `AI审核时间：${this.aiInspection.checked_at}`;
+            }
+            if (this.needsInspectionConfirmation) {
+                return '系统每 24 小时提醒一次。完成核对后点击左侧按钮确认。';
+            }
+            const last = new Date(this.lastInspectionConfirmedAt);
+            return `上次确认时间：${Number.isNaN(last.getTime()) ? '未知' : last.toLocaleString('zh-CN')}`;
+        },
+        usagePreviewState() {
+            if (!this.showUseModal || !this.useForm.quantity || !this.useForm.usage_unit || !this.useForm.stock_unit) {
+                return { text: '', error: false };
+            }
+            try {
+                const converted = this.convertUsageToStockUnits(
+                    { unit: this.useForm.stock_unit, specification: this.useForm.specification },
+                    this.useForm.quantity,
+                    this.useForm.usage_unit
+                );
+                const currentQty = Number(this.useForm.current_qty || 0);
+                const nextQty = this.useForm.action === '领用' ? currentQty - converted : currentQty + converted;
+                const prefix = `${this.useForm.action} ${this.formatNumber(this.useForm.quantity)} ${this.useForm.usage_unit}`;
+                if (this.useForm.action === '领用' && nextQty < -1e-9) {
+                    return {
+                        text: `${prefix}，当前库存仅剩 ${this.formatRemainingAmount(currentQty, this.useForm.stock_unit, this.useForm.specification)}`,
+                        error: true,
+                    };
+                }
+                return {
+                    text: `${prefix}，操作后预计剩余 ${this.formatRemainingAmount(Math.max(nextQty, 0), this.useForm.stock_unit, this.useForm.specification)}`,
+                    error: false,
+                };
+            } catch (e) {
+                return { text: e.message || '单位无法换算', error: true };
+            }
+        },
+    },
+    methods: {
+        emptyForm() {
+            return { name: '', name_en: '', cas_number: '', catalog_number: '', brand: '', specification: '', purity: '', unit: '瓶', quantity: 1, low_stock_threshold: 1, category: '常用试剂', storage_location: '', storage_temp: '', hazard_level: '普通', hazard_info: '', expiry_date: '', supplier: '', price: null, notes: '', image_path: '' };
+        },
+        emptyUseForm() {
+            return {
+                reagent_id: '',
+                reagent_name: '',
+                current_qty: 0,
+                stock_unit: '',
+                specification: '',
+                action: '领用',
+                quantity: 1,
+                usage_unit: '',
+                usageUnitOptions: [],
+                packageHint: '',
+                user_name: '',
+                purpose: '',
+                notes: '',
+            };
+        },
+        formatNumber(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return value || '';
+            return Number(num.toFixed(6)).toString();
+        },
+        formatRemainingAmount(quantity, stockUnit, specification) {
+            const qty = Number(quantity || 0);
+            const stockNormalized = this.normalizeUnit(stockUnit);
+            const specAmount = this.parseSpecAmount(specification);
+            if (stockNormalized && CONTAINER_UNITS.includes(stockNormalized.unit) && specAmount) {
+                return `${this.formatNumber(qty * specAmount.baseAmount)} ${specAmount.unit}`;
+            }
+            const displayUnit = stockNormalized ? stockNormalized.unit : (stockUnit || '');
+            return `${this.formatNumber(qty)} ${displayUnit}`.trim();
+        },
+        normalizeUnit(unit) {
+            return UNIT_DEFS[String(unit || '').trim()] || null;
+        },
+        parseSpecAmount(specification) {
+            if (!specification) return null;
+            const match = String(specification).match(/(\d+(?:\.\d+)?)\s*(mL|ml|L|l|uL|ul|μL|μl|kg|g|mg)/);
+            if (!match) return null;
+            const value = Number(match[1]);
+            const normalized = this.normalizeUnit(match[2]);
+            if (!normalized) return null;
+            return {
+                value,
+                unit: normalized.unit,
+                dimension: normalized.dimension,
+                baseAmount: value * normalized.factor,
+            };
+        },
+        getUnitChoicesByDimension(dimension) {
+            return UNIT_GROUPS[dimension] || [];
+        },
+        getUsageUnitOptions(reagent) {
+            const options = [];
+            const seen = new Set();
+            const pushOption = (unit) => {
+                const normalized = this.normalizeUnit(unit);
+                const display = normalized ? normalized.unit : String(unit || '').trim();
+                if (!display || seen.has(display)) return;
+                seen.add(display);
+                options.push({ value: display, label: display });
+            };
+
+            const stockNormalized = this.normalizeUnit(reagent.unit);
+            if (!stockNormalized) {
+                pushOption(reagent.unit);
+                return options;
+            }
+
+            pushOption(stockNormalized.unit);
+            if (stockNormalized.dimension === 'volume' || stockNormalized.dimension === 'mass') {
+                this.getUnitChoicesByDimension(stockNormalized.dimension).forEach(pushOption);
+                return options;
+            }
+
+            const specAmount = this.parseSpecAmount(reagent.specification);
+            if (specAmount) {
+                this.getUnitChoicesByDimension(specAmount.dimension).forEach(pushOption);
+            }
+            return options;
+        },
+        convertUsageToStockUnits(reagent, quantity, usageUnit) {
+            const stockNormalized = this.normalizeUnit(reagent.unit);
+            const usageNormalized = this.normalizeUnit(usageUnit);
+            if (!stockNormalized || !usageNormalized) {
+                throw new Error('不支持的单位');
+            }
+
+            const qty = Number(quantity);
+            const stockUnit = stockNormalized.unit;
+            if (stockNormalized.dimension === usageNormalized.dimension
+                && !CONTAINER_UNITS.includes(stockUnit)
+                && !CONTAINER_UNITS.includes(usageNormalized.unit)) {
+                return (qty * usageNormalized.factor) / stockNormalized.factor;
+            }
+
+            if (CONTAINER_UNITS.includes(stockUnit)) {
+                if (usageNormalized.unit === stockUnit) {
+                    return qty;
+                }
+                const specAmount = this.parseSpecAmount(reagent.specification);
+                if (!specAmount) {
+                    throw new Error('当前试剂规格未填写可换算的容量或质量');
+                }
+                if (specAmount.dimension !== usageNormalized.dimension) {
+                    throw new Error('领用单位与规格单位不匹配');
+                }
+                return (qty * usageNormalized.factor) / specAmount.baseAmount;
+            }
+
+            throw new Error('当前库存单位与领用单位无法换算');
+        },
+        buildUseForm(reagent) {
+            const stockNormalized = this.normalizeUnit(reagent.unit);
+            const stockUnit = stockNormalized ? stockNormalized.unit : (reagent.unit || '');
+            const usageUnitOptions = this.getUsageUnitOptions(reagent);
+            const specAmount = this.parseSpecAmount(reagent.specification);
+            let packageHint = stockUnit ? `库存单位为 ${stockUnit}` : '';
+
+            if (stockNormalized && stockNormalized.dimension === 'count' && specAmount) {
+                const extraUnits = usageUnitOptions.map(option => option.value).filter(unit => unit !== stockUnit);
+                packageHint = `规格约 ${this.formatNumber(specAmount.value)} ${specAmount.unit}/${stockUnit}`;
+                if (extraUnits.length) {
+                    packageHint += `，可按 ${stockUnit} 或 ${extraUnits.join(' / ')} 录入。`;
+                }
+            } else if (stockNormalized && (stockNormalized.dimension === 'volume' || stockNormalized.dimension === 'mass')) {
+                packageHint = `库存单位为 ${stockUnit}，可按 ${usageUnitOptions.map(option => option.value).join(' / ')} 录入。`;
+            } else if (reagent.specification) {
+                packageHint = `当前规格：${reagent.specification}`;
+            }
+
+            return {
+                ...this.emptyUseForm(),
+                reagent_id: reagent.id,
+                reagent_name: reagent.name,
+                current_qty: Number(reagent.quantity || 0),
+                stock_unit: stockUnit,
+                specification: reagent.specification || '',
+                action: '领用',
+                quantity: 1,
+                usage_unit: usageUnitOptions[0] ? usageUnitOptions[0].value : stockUnit,
+                usageUnitOptions,
+                packageHint,
+            };
+        },
+        formatUsageRecord(record) {
+            const quantityText = this.formatNumber(record.quantity);
+            const displayUnit = record.usage_unit || record.stock_unit || record.converted_unit || '';
+            const convertedQty = record.converted_quantity;
+            const convertedUnit = record.converted_unit || record.stock_unit || '';
+            if (convertedQty != null && convertedUnit && displayUnit && convertedUnit !== displayUnit) {
+                return `${quantityText} ${displayUnit}（折合 ${this.formatNumber(convertedQty)} ${convertedUnit}）`;
+            }
+            return `${quantityText} ${displayUnit}`.trim();
+        },
+        async loadCategories() {
+            const res = await fetch('/api/categories');
+            this.categories = await res.json();
+        },
+        async loadStorageLocations() {
+            const res = await fetch('/api/storage-locations');
+            this.storageLocations = await res.json();
+        },
+        async loadReagents() {
+            let url = '/api/reagents?';
+            if (this.filterCategory) url += `category=${encodeURIComponent(this.filterCategory)}&`;
+            if (this.searchQuery) url += `search=${encodeURIComponent(this.searchQuery)}&`;
+            const res = await fetch(url);
+            this.reagents = await res.json();
+        },
+        async loadStats() {
+            const res = await fetch('/api/stats');
+            this.stats = await res.json();
+        },
+        async runAiInspectionReview() {
+            this.aiInspectionLoading = true;
+            this.aiInspectionError = '';
+            try {
+                const res = await fetch('/api/inspection/ai-review', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || 'AI审核失败');
+                }
+                this.aiInspection = data.data;
+                this.showToast('AI库存审核已完成');
+            } catch (e) {
+                this.aiInspectionError = e.message || 'AI审核失败';
+                this.showToast(this.aiInspectionError);
+            } finally {
+                this.aiInspectionLoading = false;
+            }
+        },
+        async loadUsageRecords() {
+            const res = await fetch('/api/usage');
+            this.usageRecords = await res.json();
+        },
+        debounceSearch() {
+            clearTimeout(this.searchTimer);
+            this.searchTimer = setTimeout(() => {
+                this.currentView = 'reagents';
+                this.loadReagents();
+            }, 300);
+        },
+        openAddModal() {
+            this.editingReagent = null;
+            this.form = this.emptyForm();
+            this.showReagentModal = true;
+        },
+        openReagentView(filter = 'all') {
+            this.currentView = 'reagents';
+            this.filterCategory = '';
+            if (filter === 'all') {
+                this.quickFilter = '';
+            } else {
+                this.quickFilter = filter;
+            }
+            this.loadReagents();
+        },
+        openCategoryFilter(name) {
+            const shortcutMap = {
+                '危险试剂': 'hazardous',
+                '-20°C冰箱': '-20_storage',
+                '-80°C冰箱': '-80_storage',
+            };
+            this.currentView = 'reagents';
+            if (shortcutMap[name]) {
+                this.filterCategory = '';
+                this.quickFilter = shortcutMap[name];
+            } else {
+                this.quickFilter = '';
+                this.filterCategory = name;
+            }
+            this.loadReagents();
+        },
+        isCategoryActive(name) {
+            const shortcutMap = {
+                '危险试剂': 'hazardous',
+                '-20°C冰箱': '-20_storage',
+                '-80°C冰箱': '-80_storage',
+            };
+            return this.currentView === 'reagents' && (
+                (shortcutMap[name] && this.quickFilter === shortcutMap[name]) ||
+                (!shortcutMap[name] && this.filterCategory === name)
+            );
+        },
+        openEditModal(r) {
+            this.editingReagent = r.id;
+            this.form = { ...r };
+            this.showReagentModal = true;
+        },
+        openUseModal(r) {
+            this.useForm = this.buildUseForm(r);
+            this.showUseModal = true;
+        },
+        openScanModal() {
+            this.scanItems = [];
+            this.scanStatus = null;
+            this.scanError = '';
+            this.scanCurrentIndex = 0;
+            this.scanImportedCount = 0;
+            this.showScanModal = true;
+        },
+        async saveReagent() {
+            if (!this.form.name) return;
+            const url = this.editingReagent ? `/api/reagents/${this.editingReagent}` : '/api/reagents';
+            const method = this.editingReagent ? 'PUT' : 'POST';
+            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.form) });
+            this.showReagentModal = false;
+            this.showToast(this.editingReagent ? '试剂信息已更新' : '试剂添加成功');
+            this.loadReagents();
+            this.loadStats();
+            this.loadStorageLocations();
+        },
+        async submitUsage() {
+            if (!this.useForm.user_name || !this.useForm.quantity || !this.useForm.usage_unit) return;
+            const res = await fetch('/api/usage', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.useForm)
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || `${this.useForm.action}失败`);
+                return;
+            }
+            this.showUseModal = false;
+            this.showToast(`${this.useForm.action}成功，剩余 ${this.formatRemainingAmount(data.new_quantity, this.useForm.stock_unit, this.useForm.specification)}`);
+            this.loadReagents();
+            this.loadStats();
+            this.loadUsageRecords();
+        },
+        async deleteReagent(r) {
+            if (!confirm(`确定要删除"${r.name}"吗？相关使用记录也会被删除。`)) return;
+            await fetch(`/api/reagents/${r.id}`, { method: 'DELETE' });
+            this.showToast('已删除');
+            this.loadReagents();
+            this.loadStats();
+        },
+        handleFileSelect(e) {
+            const files = Array.from(e.target.files || []);
+            if (files.length) this.addScanFiles(files);
+            e.target.value = '';
+        },
+        handleDrop(e) {
+            const files = Array.from(e.dataTransfer.files || []);
+            if (files.length) this.addScanFiles(files);
+        },
+        async addScanFiles(files) {
+            const remaining = 5 - this.scanItems.length;
+            if (remaining <= 0) {
+                this.showToast('最多同时导入 5 张图片');
+                return;
+            }
+            const selected = files.slice(0, remaining);
+            if (files.length > remaining) {
+                this.showToast('已限制为最多 5 张图片');
+            }
+            const items = await Promise.all(selected.map(file => this.createScanItem(file)));
+            this.scanItems.push(...items);
+            this.scanStatus = null;
+            this.scanError = '';
+        },
+        createScanItem(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    resolve({
+                        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                        file,
+                        preview: e.target.result,
+                        status: 'pending',
+                        error: '',
+                        filename: '',
+                    });
+                };
+                reader.readAsDataURL(file);
+            });
+        },
+        removeScanItem(id) {
+            this.scanItems = this.scanItems.filter(item => item.id !== id);
+        },
+        buildRecognizedForm(data, imageUrl) {
+            const form = {
+                ...this.emptyForm(),
+                ...Object.fromEntries(Object.entries(data).filter(([_, v]) => v != null)),
+                image_path: imageUrl,
+                quantity: 1,
+            };
+            if (form.low_stock_threshold == null || form.low_stock_threshold === '') form.low_stock_threshold = 1;
+            if (!form.category) form.category = '常用试剂';
+            if (!form.unit) form.unit = '瓶';
+            if (!form.hazard_level) form.hazard_level = '普通';
+            return form;
+        },
+        async uploadAndRecognizeScanItem(item) {
+            this.scanStatus = 'uploading';
+            item.status = 'uploading';
+            const formData = new FormData();
+            formData.append('file', item.file);
+            const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+            const uploadData = await uploadRes.json();
+            if (!uploadData.success) throw new Error(uploadData.error || '上传失败');
+            item.filename = uploadData.filename;
+
+            this.scanStatus = 'recognizing';
+            item.status = 'recognizing';
+            const recRes = await fetch('/api/recognize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: uploadData.filename })
+            });
+            const recData = await recRes.json();
+            if (!recData.success) throw new Error(recData.error || '识别失败');
+
+            return {
+                uploadData,
+                recognized: recData.data,
+            };
+        },
+        async startRecognize() {
+            if (!this.scanItems.length) return;
+            this.scanImportedCount = 0;
+            this.scanError = '';
+
+            if (this.scanItems.length === 1) {
+                const item = this.scanItems[0];
+                this.scanCurrentIndex = 0;
+                try {
+                    const { uploadData, recognized } = await this.uploadAndRecognizeScanItem(item);
+                    this.scanStatus = 'done';
+                    item.status = 'done';
+                    this.form = this.buildRecognizedForm(recognized, uploadData.url);
+                    setTimeout(() => {
+                        this.showScanModal = false;
+                        this.editingReagent = null;
+                        this.showReagentModal = true;
+                    }, 800);
+                } catch (e) {
+                    this.scanStatus = 'error';
+                    item.status = 'error';
+                    item.error = e.message || '识别失败';
+                    this.scanError = item.error;
+                }
+                return;
+            }
+
+            for (let i = 0; i < this.scanItems.length; i++) {
+                const item = this.scanItems[i];
+                this.scanCurrentIndex = i;
+                try {
+                    const { uploadData, recognized } = await this.uploadAndRecognizeScanItem(item);
+                    const form = this.buildRecognizedForm(recognized, uploadData.url);
+                    const saveRes = await fetch('/api/reagents', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(form),
+                    });
+                    const saveData = await saveRes.json();
+                    if (!saveRes.ok || !saveData.success) {
+                        throw new Error(saveData.error || '导入失败');
+                    }
+                    item.status = 'imported';
+                    this.scanImportedCount += 1;
+                } catch (e) {
+                    item.status = 'error';
+                    item.error = e.message || '导入失败';
+                }
+            }
+            this.scanStatus = 'done';
+            this.loadReagents();
+            this.loadStats();
+            this.loadStorageLocations();
+            this.showToast(`批量导入完成：成功 ${this.scanImportedCount} / ${this.scanItems.length}`);
+        },
+        scanItemStatusLabel(item) {
+            if (item.status === 'uploading') return '正在上传';
+            if (item.status === 'recognizing') return '正在识别';
+            if (item.status === 'done') return '识别完成，待确认';
+            if (item.status === 'imported') return '已导入';
+            if (item.status === 'error') return item.error || '处理失败';
+            return '待处理';
+        },
+        getCategoryCount(name) {
+            if (name === '危险试剂') {
+                return (this.stats.shortcut_counts && this.stats.shortcut_counts.hazardous) || 0;
+            }
+            if (name === '-20°C冰箱') {
+                return (this.stats.shortcut_counts && this.stats.shortcut_counts['-20_storage']) || 0;
+            }
+            if (name === '-80°C冰箱') {
+                return (this.stats.shortcut_counts && this.stats.shortcut_counts['-80_storage']) || 0;
+            }
+            const cs = (this.stats.category_stats || []).find(c => c.category === name);
+            return cs ? cs.count : 0;
+        },
+        getCategoryIcon(name) {
+            const cat = this.categories.find(c => c.name === name);
+            return cat ? cat.icon : '📦';
+        },
+        getCategoryColor(name) {
+            const cat = this.categories.find(c => c.name === name);
+            return cat ? cat.color : '#6b7280';
+        },
+        hazardClass(level) {
+            const map = { '普通': 'bg-gray-100 text-gray-600', '易燃': 'bg-red-100 text-red-700', '腐蚀': 'bg-yellow-100 text-yellow-700', '有毒': 'bg-orange-100 text-orange-700', '剧毒': 'bg-red-200 text-red-800', '易爆': 'bg-purple-100 text-purple-700' };
+            return map[level] || 'bg-gray-100 text-gray-600';
+        },
+        isLowStock(reagent) {
+            const quantity = reagent.quantity || 0;
+            const threshold = reagent.low_stock_threshold == null ? 1 : reagent.low_stock_threshold;
+            return threshold > 0 && quantity > 0 && quantity <= threshold;
+        },
+        isExpiryAttention(date) {
+            if (!date) return false;
+            const d = new Date(`${date}T23:59:59`);
+            if (Number.isNaN(d.getTime())) return false;
+            const now = new Date();
+            const diff = (d - now) / (1000 * 60 * 60 * 24);
+            return diff <= 30;
+        },
+        showToast(msg) {
+            this.toast = msg;
+            setTimeout(() => { this.toast = null; }, 2500);
+        },
+        confirmInspection() {
+            this.lastInspectionConfirmedAt = new Date().toISOString();
+            localStorage.setItem('lab_inspection_confirmed_at', this.lastInspectionConfirmedAt);
+            this.showToast('今日巡检已确认');
+        },
+    },
+    mounted() {
+        this.lastInspectionConfirmedAt = localStorage.getItem('lab_inspection_confirmed_at');
+        this.loadCategories();
+        this.loadStorageLocations();
+        this.loadReagents();
+        this.loadStats();
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

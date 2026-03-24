@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: lab-reagent-manager
+    runtime: python
+    plan: starter
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:${PORT:-10000} --workers 1 --timeout 120
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    disk:
+      name: lab-reagent-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: MODEL
+        value: gpt-5.4
+      - key: TEAMPLUS_API_KEY
+        sync: false
