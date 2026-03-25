@@ -358,7 +358,12 @@ def load_uploaded_bytes(file_ref):
     if not file_ref:
         raise FileNotFoundError("文件不存在")
     file_ref = str(file_ref)
-    if use_blob_storage() and (file_ref.startswith("reagents/") or file_ref.startswith("http://") or file_ref.startswith("https://")):
+    if file_ref.startswith("http://") or file_ref.startswith("https://"):
+        response = requests.get(file_ref, timeout=30)
+        response.raise_for_status()
+        return response.content, response.headers.get("content-type"), file_ref
+
+    if use_blob_storage() and file_ref.startswith("reagents/"):
         if blob_put is None:
             raise RuntimeError("未安装 vercel Blob SDK")
         from vercel.blob import get as blob_get
@@ -376,11 +381,6 @@ def load_uploaded_bytes(file_ref):
         if body is None:
             raise FileNotFoundError("文件不存在")
         return body, content_type, source_name
-
-    if file_ref.startswith("http://") or file_ref.startswith("https://"):
-        response = requests.get(file_ref, timeout=30)
-        response.raise_for_status()
-        return response.content, response.headers.get("content-type"), file_ref
 
     filepath = os.path.join(LOCAL_UPLOAD_FOLDER, file_ref)
     if not os.path.exists(filepath):
