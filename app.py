@@ -391,6 +391,32 @@ def load_uploaded_bytes(file_ref):
     return body, content_type, filepath
 
 
+def read_uploaded_image_file(file_storage):
+    if file_storage is None:
+        raise ValueError("没有上传文件")
+    if file_storage.filename == "" or not allowed_file(file_storage.filename):
+        raise ValueError("不支持的文件格式")
+
+    ext = file_storage.filename.rsplit(".", 1)[1].lower()
+    content_type = file_storage.mimetype or media_type_from_name(file_storage.filename)
+
+    if ext in NON_STANDARD_IMAGE_EXTENSIONS:
+        from PIL import Image
+
+        image = Image.open(file_storage.stream)
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGBA")
+        else:
+            image = image.convert("RGB")
+        output = io.BytesIO()
+        image.save(output, "PNG")
+        body = output.getvalue()
+        return body, "image/png", f"{uuid.uuid4().hex[:12]}.png"
+
+    body = file_storage.read()
+    return body, content_type, f"{uuid.uuid4().hex[:12]}.{ext}"
+
+
 def media_type_from_name(name, content_type=None):
     if content_type and content_type.startswith("image/"):
         return content_type
@@ -851,46 +877,29 @@ def upload_image():
     if "file" not in request.files:
         return jsonify({"error": "没有上传文件"}), 400
 
-    file = request.files["file"]
-    if file.filename == "" or not allowed_file(file.filename):
-        return jsonify({"error": "不支持的文件格式"}), 400
-
-    ext = file.filename.rsplit(".", 1)[1].lower()
-    content_type = file.mimetype or media_type_from_name(file.filename)
-
-    if ext in NON_STANDARD_IMAGE_EXTENSIONS:
-        from PIL import Image
-
-        image = Image.open(file.stream)
-        if image.mode in ("RGBA", "LA", "P"):
-            image = image.convert("RGBA")
-        else:
-            image = image.convert("RGB")
-        output = io.BytesIO()
-        image.save(output, "PNG")
-        body = output.getvalue()
-        upload_name = f"{uuid.uuid4().hex[:12]}.png"
-        content_type = "image/png"
-    else:
-        body = file.read()
-        upload_name = f"{uuid.uuid4().hex[:12]}.{ext}"
-
     try:
+        body, content_type, upload_name = read_uploaded_image_file(request.files["file"])
         stored = upload_bytes(upload_name, body, content_type)
         return jsonify({"success": True, **stored})
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"error": f"上传失败: {str(exc)}"}), 500
 
 
 @app.route("/api/recognize", methods=["POST"])
 def recognize_reagent():
-    data = request.json or {}
-    file_ref = data.get("file_ref") or data.get("url") or data.get("filename")
-    if not file_ref:
-        return jsonify({"error": "未提供文件引用"}), 400
-
     try:
-        image_bytes, content_type, source_name = load_uploaded_bytes(file_ref)
+        if "file" in request.files:
+            image_bytes, content_type, source_name = read_uploaded_image_file(request.files["file"])
+        else:
+            data = request.json or {}
+            file_ref = data.get("file_ref") or data.get("url") or data.get("filename")
+            if not file_ref:
+                return jsonify({"error": "未提供文件引用"}), 400
+            image_bytes, content_type, source_name = load_uploaded_bytes(file_ref)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except FileNotFoundError:
         return jsonify({"error": "文件不存在"}), 404
     except Exception as exc:

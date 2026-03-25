@@ -1426,14 +1426,11 @@ createApp({
 
             this.scanStatus = 'recognizing';
             item.status = 'recognizing';
+            const recognizeFormData = new FormData();
+            recognizeFormData.append('file', item.file);
             const recRes = await fetch('/api/recognize', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    file_ref: uploadData.file_ref || uploadData.url || uploadData.filename,
-                    url: uploadData.url,
-                    filename: uploadData.filename,
-                })
+                body: recognizeFormData,
             });
             const recData = await recRes.json();
             if (!recData.success) throw new Error(recData.error || '识别失败');
