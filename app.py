@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import requests
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from pillow_heif import register_heif_opener
+import psycopg
 from sqlalchemy import Column, Float, ForeignKey, Integer, String, create_engine, func, inspect, or_, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
@@ -116,10 +117,6 @@ def choose_database_url():
     ]
     for candidate in candidates:
         if candidate:
-            if candidate.startswith("postgres://"):
-                return "postgresql+psycopg" + candidate[len("postgres"):]
-            if candidate.startswith("postgresql://"):
-                return "postgresql+psycopg" + candidate[len("postgresql"):]
             return candidate
     return f"sqlite:///{LOCAL_DATABASE}"
 
@@ -130,10 +127,18 @@ USING_SQLITE = DATABASE_URL.startswith("sqlite")
 engine_kwargs = {"future": True}
 if USING_SQLITE:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
+    engine = create_engine(DATABASE_URL, **engine_kwargs)
 else:
     engine_kwargs["poolclass"] = NullPool
+    raw_database_url = DATABASE_URL
 
-engine = create_engine(DATABASE_URL, **engine_kwargs)
+    def connect_postgres():
+        conninfo = raw_database_url
+        if "connect_timeout=" not in conninfo:
+            conninfo += "&connect_timeout=10" if "?" in conninfo else "?connect_timeout=10"
+        return psycopg.connect(conninfo)
+
+    engine = create_engine("postgresql+psycopg://", creator=connect_postgres, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
@@ -235,6 +240,10 @@ def use_blob_storage():
     return bool(os.environ.get("BLOB_READ_WRITE_TOKEN"))
 
 
+def blob_access_mode():
+    return os.environ.get("BLOB_ACCESS", "private")
+
+
 def ensure_column(table_name, column_name, column_type):
     inspector = inspect(engine)
     existing = {column["name"] for column in inspector.get_columns(table_name)}
@@ -315,20 +324,22 @@ def upload_bytes(filename, body, content_type):
         if blob_put is None:
             raise RuntimeError("未安装 vercel Blob SDK")
         pathname = f"reagents/{uuid.uuid4().hex[:12]}-{safe_name}"
+        access_mode = blob_access_mode()
         blob = blob_put(
             path=pathname,
             body=body,
-            access="public",
+            access=access_mode,
             content_type=content_type,
             add_random_suffix=False,
             token=os.environ.get("BLOB_READ_WRITE_TOKEN"),
         )
         blob_url = getattr(blob, "url", None)
+        blob_download_url = getattr(blob, "download_url", None)
         blob_pathname = getattr(blob, "pathname", None) or pathname
         return {
-            "file_ref": blob_url,
+            "file_ref": blob_pathname,
             "filename": blob_pathname,
-            "url": blob_url,
+            "url": blob_download_url or blob_url,
         }
 
     os.makedirs(LOCAL_UPLOAD_FOLDER, exist_ok=True)
@@ -347,6 +358,25 @@ def load_uploaded_bytes(file_ref):
     if not file_ref:
         raise FileNotFoundError("文件不存在")
     file_ref = str(file_ref)
+    if use_blob_storage() and (file_ref.startswith("reagents/") or file_ref.startswith("http://") or file_ref.startswith("https://")):
+        if blob_put is None:
+            raise RuntimeError("未安装 vercel Blob SDK")
+        from vercel.blob import get as blob_get
+
+        blob = blob_get(
+            file_ref,
+            access=blob_access_mode(),
+            token=os.environ.get("BLOB_READ_WRITE_TOKEN"),
+            timeout=30,
+            use_cache=False,
+        )
+        source_name = getattr(blob, "pathname", None) or file_ref
+        content_type = getattr(blob, "content_type", None)
+        body = getattr(blob, "content", None)
+        if body is None:
+            raise FileNotFoundError("文件不存在")
+        return body, content_type, source_name
+
     if file_ref.startswith("http://") or file_ref.startswith("https://"):
         response = requests.get(file_ref, timeout=30)
         response.raise_for_status()
