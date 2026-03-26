@@ -924,9 +924,9 @@ createApp({
             } else if (this.quickFilter === 'hazardous') {
                 list = list.filter(r => (r.hazard_level || '普通') !== '普通');
             } else if (this.quickFilter === '-20_storage') {
-                list = list.filter(r => (r.storage_temp || '').includes('-20'));
+                list = list.filter(r => this.matchesStorageShortcut(r, '-20'));
             } else if (this.quickFilter === '-80_storage') {
-                list = list.filter(r => (r.storage_temp || '').includes('-80'));
+                list = list.filter(r => this.matchesStorageShortcut(r, '-80'));
             } else if (this.quickFilter === 'expiring_soon') {
                 list = list.filter(r => this.isExpiryAttention(r.expiry_date));
             }
@@ -1252,7 +1252,7 @@ createApp({
         },
         openAddModal() {
             this.editingReagent = null;
-            this.form = this.emptyForm();
+            this.form = { ...this.emptyForm(), ...this.getContextFormDefaults() };
             this.showReagentModal = true;
         },
         openReagentView(filter = 'all') {
@@ -1309,11 +1309,40 @@ createApp({
             this.scanImportedCount = 0;
             this.showScanModal = true;
         },
+        matchesStorageShortcut(reagent, marker) {
+            const category = String(reagent.category || '').trim();
+            const storageTemp = String(reagent.storage_temp || '').trim();
+            const shortcutCategory = marker === '-20' ? '-20°C冰箱' : '-80°C冰箱';
+            return category === shortcutCategory || storageTemp.includes(marker);
+        },
+        getContextFormDefaults() {
+            if (this.quickFilter === '-20_storage') {
+                return { storage_temp: '-20°C', category: '-20°C冰箱' };
+            }
+            if (this.quickFilter === '-80_storage') {
+                return { storage_temp: '-80°C', category: '-80°C冰箱' };
+            }
+            if (this.filterCategory) {
+                return { category: this.filterCategory };
+            }
+            return {};
+        },
+        prepareFormPayload(form) {
+            const payload = { ...form };
+            if (payload.category === '-20°C冰箱' && !String(payload.storage_temp || '').trim()) {
+                payload.storage_temp = '-20°C';
+            }
+            if (payload.category === '-80°C冰箱' && !String(payload.storage_temp || '').trim()) {
+                payload.storage_temp = '-80°C';
+            }
+            return payload;
+        },
         async saveReagent() {
             if (!this.form.name) return;
             const url = this.editingReagent ? `/api/reagents/${this.editingReagent}` : '/api/reagents';
             const method = this.editingReagent ? 'PUT' : 'POST';
-            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.form) });
+            const payload = this.prepareFormPayload(this.form);
+            await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             this.showReagentModal = false;
             this.showToast(this.editingReagent ? '试剂信息已更新' : '试剂添加成功');
             this.loadReagents();
@@ -1402,8 +1431,10 @@ createApp({
             this.scanItems = this.scanItems.filter(item => item.id !== id);
         },
         buildRecognizedForm(data, imageUrl) {
+            const contextDefaults = this.getContextFormDefaults();
             const form = {
                 ...this.emptyForm(),
+                ...contextDefaults,
                 ...Object.fromEntries(Object.entries(data).filter(([_, v]) => v != null)),
                 image_path: imageUrl,
                 quantity: 1,

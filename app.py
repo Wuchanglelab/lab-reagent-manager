@@ -32,6 +32,10 @@ LOCAL_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 LOCAL_DATABASE = os.path.join(DATA_DIR, "lab_reagents.db")
 DEFAULT_TEAMPLUS_API_KEY = ""
 DEFAULT_CATEGORY_NAMES = ["常用试剂", "危险试剂", "-20°C冰箱", "-80°C冰箱", "实验耗材", "生物样品"]
+STORAGE_SHORTCUT_CATEGORY_MAP = {
+    "-20°C冰箱": "-20",
+    "-80°C冰箱": "-80",
+}
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
 MAX_UPLOAD_MB = 1
@@ -442,6 +446,22 @@ def is_expiring_soon(value, days=30):
     return expiry <= (datetime.now().date() + timedelta(days=days))
 
 
+def matches_storage_shortcut(reagent, marker):
+    category = str(reagent.get("category") or "").strip()
+    storage_temp = str(reagent.get("storage_temp") or "").strip()
+    return STORAGE_SHORTCUT_CATEGORY_MAP.get(category) == marker or marker in storage_temp
+
+
+def normalize_reagent_payload(payload):
+    data = dict(payload or {})
+    category = str(data.get("category") or "").strip()
+    storage_temp = str(data.get("storage_temp") or "").strip()
+    marker = STORAGE_SHORTCUT_CATEGORY_MAP.get(category)
+    if marker and not storage_temp:
+        data["storage_temp"] = f"{marker}°C"
+    return data
+
+
 def compute_inventory_stats(reagents):
     stats = {
         "total": len(reagents),
@@ -474,9 +494,9 @@ def compute_inventory_stats(reagents):
         if hazard_level != "普通":
             stats["hazardous"] += 1
             stats["shortcut_counts"]["hazardous"] += 1
-        if "-20" in storage_temp:
+        if matches_storage_shortcut(reagent, "-20"):
             stats["shortcut_counts"]["-20_storage"] += 1
-        if "-80" in storage_temp:
+        if matches_storage_shortcut(reagent, "-80"):
             stats["shortcut_counts"]["-80_storage"] += 1
         if is_expiring_soon(reagent.get("expiry_date")):
             stats["expiring_soon"] += 1
@@ -599,7 +619,7 @@ def get_storage_locations():
 
 @app.route("/api/reagents", methods=["POST"])
 def add_reagent():
-    data = request.json or {}
+    data = normalize_reagent_payload(request.json or {})
     reagent_id = str(uuid.uuid4())[:8]
     session = SessionLocal()
     try:
@@ -649,7 +669,7 @@ def get_reagent(reagent_id):
 
 @app.route("/api/reagents/<reagent_id>", methods=["PUT"])
 def update_reagent(reagent_id):
-    data = request.json or {}
+    data = normalize_reagent_payload(request.json or {})
     session = SessionLocal()
     try:
         reagent = session.get(Reagent, reagent_id)
