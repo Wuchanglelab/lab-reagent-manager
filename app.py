@@ -607,12 +607,54 @@ def serialize_usage_row(record, reagent_name, stock_unit):
     return data
 
 
-def serialize_purchase_request(row):
+def find_purchase_stock_matches(session, purchase, limit=3):
+    filters = []
+    if purchase.catalog_number:
+        filters.append(Reagent.catalog_number == purchase.catalog_number)
+    if purchase.cas_number:
+        filters.append(Reagent.cas_number == purchase.cas_number)
+    if purchase.reagent_name:
+        filters.append(Reagent.name.ilike(f"%{purchase.reagent_name}%"))
+    if purchase.name_en:
+        filters.append(Reagent.name_en.ilike(f"%{purchase.name_en}%"))
+    if not filters:
+        return []
+
+    rows = (
+        session.query(Reagent)
+        .filter(or_(*filters))
+        .filter(Reagent.quantity > 0)
+        .order_by(Reagent.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": row.id,
+            "name": row.name,
+            "cas_number": row.cas_number,
+            "catalog_number": row.catalog_number,
+            "brand": row.brand,
+            "specification": row.specification,
+            "quantity": float(row.quantity or 0),
+            "unit": row.unit,
+            "storage_location": row.storage_location,
+            "updated_at": row.updated_at,
+        }
+        for row in rows
+    ]
+
+
+def serialize_purchase_request(row, session=None):
     data = model_to_dict(row)
     data["quantity"] = float(data["quantity"] or 0)
     data["received_quantity"] = None if data["received_quantity"] is None else float(data["received_quantity"])
     data["accepted_quantity"] = None if data["accepted_quantity"] is None else float(data["accepted_quantity"])
     data["expected_price"] = None if data["expected_price"] is None else float(data["expected_price"])
+    if session is not None:
+        stock_matches = find_purchase_stock_matches(session, row)
+        data["stock_matches"] = stock_matches
+        data["stock_available"] = any(match["quantity"] > 0 for match in stock_matches)
     return data
 
 
@@ -1063,7 +1105,7 @@ def get_purchases():
             )
 
         rows = query.order_by(PurchaseRequest.updated_at.desc()).all()
-        return jsonify([serialize_purchase_request(row) for row in rows])
+        return jsonify([serialize_purchase_request(row, session) for row in rows])
     finally:
         session.close()
 

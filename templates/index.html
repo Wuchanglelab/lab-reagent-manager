@@ -1191,11 +1191,15 @@
                                             <div>预算: {{item.expected_price ? '¥' + item.expected_price : '-'}}</div>
                                             <div v-if="item.approver" class="truncate" :title="item.approver_email || ''">审批: {{item.approver}}</div>
                                         </div>
+                                        <div v-if="item.stock_available" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                            库存仍有：{{stockMatchSummary(item.stock_matches)}}。审批前建议确认是否确需采购。
+                                        </div>
                                         <div class="mt-3 flex flex-wrap gap-2 text-[11px]">
-                                            <span v-if="item.approver_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知审批人</span>
-                                            <span v-else-if="item.approver_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.approver_email_error">审批邮件未发出</span>
-                                            <span v-if="item.requester_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知申请人</span>
-                                            <span v-else-if="item.requester_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.requester_email_error">回执邮件未发出</span>
+                                            <span v-if="webApprovalMode" class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">网页审批模式</span>
+                                            <span v-if="!webApprovalMode && item.approver_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知审批人</span>
+                                            <span v-else-if="!webApprovalMode && item.approver_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.approver_email_error">审批邮件未发出</span>
+                                            <span v-if="!webApprovalMode && item.requester_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知申请人</span>
+                                            <span v-else-if="!webApprovalMode && item.requester_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.requester_email_error">回执邮件未发出</span>
                                         </div>
                                         <div v-if="item.reason" class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{{item.reason}}</div>
                                         <div v-if="item.inspection_notes" class="mt-2 text-xs text-slate-500">验货备注：{{item.inspection_notes}}</div>
@@ -1482,6 +1486,15 @@
                     申请人：{{approvalForm.requester || '-'}}<br>
                     邮箱：{{approvalForm.requester_email || '-'}}
                 </div>
+                <div v-if="approvalForm.stock_available" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    <div class="font-semibold text-amber-900">库存仍有余量</div>
+                    <div class="mt-1">系统匹配到库存中还有同类试剂，建议先核对现有库存再批准采购。</div>
+                    <div class="mt-2 space-y-1 text-xs">
+                        <div v-for="match in approvalForm.stock_matches" :key="match.id">
+                            {{match.name}}：{{formatRemainingAmount(match.quantity, match.unit, match.specification)}}，位置 {{match.storage_location || '未填写'}}
+                        </div>
+                    </div>
+                </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-600 mb-1">审批人 *</label>
                     <input v-model.trim="approvalForm.approver" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="审批人姓名">
@@ -1494,14 +1507,14 @@
                     <label class="block text-sm font-medium text-gray-600 mb-1">{{approvalForm.decision === 'approve' ? '审批备注' : '驳回原因'}}</label>
                     <textarea v-model="approvalForm.approval_notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" :placeholder="approvalForm.decision === 'approve' ? '可留空，例如：同意采购' : '请填写驳回原因'"></textarea>
                 </div>
-                <div class="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                    即使 SMTP 邮件还未配置，手动审批也会保存状态；邮件发送失败只会显示为回执未发出。
+                <div class="rounded-xl bg-slate-100 px-4 py-3 text-xs text-slate-600">
+                    当前按网页审批处理；邮件通知未配置时不会影响审批、验货和入库流程。
                 </div>
             </div>
             <div class="modal-actions p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-3">
                 <button @click="showApprovalModal=false" class="btn-secondary">取消</button>
                 <button @click="submitApprovalDecision()" class="btn-primary" :class="approvalForm.decision === 'reject' ? 'bg-red-600 border-red-600 hover:bg-red-700' : ''" :disabled="!approvalForm.approver">
-                    {{approvalForm.decision === 'approve' ? '确认批准' : '确认驳回'}}
+                    {{approvalForm.decision === 'approve' ? (approvalForm.stock_available ? '仍然批准' : '确认批准') : '确认驳回'}}
                 </button>
             </div>
         </div>
@@ -1691,6 +1704,7 @@ createApp({
             usageRecords: [],
             purchases: [],
             purchaseStats: {},
+            mailConfig: { smtp_configured: false, approver_configured: false, approver_count: 0 },
             stats: {},
             searchQuery: '',
             filterCategory: '',
@@ -1769,6 +1783,9 @@ createApp({
         },
         scanProgressText() {
             return `${Math.min(this.scanCurrentIndex + 1, Math.max(this.scanItems.length, 1))}/${Math.max(this.scanItems.length, 1)}`;
+        },
+        webApprovalMode() {
+            return !this.mailConfig.smtp_configured || !this.mailConfig.approver_configured;
         },
         filteredReagents() {
             let list = [...this.reagents];
@@ -1954,6 +1971,8 @@ createApp({
                 approver: '',
                 approver_email: '',
                 approval_notes: '',
+                stock_available: false,
+                stock_matches: [],
             };
         },
         emptyReceiveForm() {
@@ -2107,6 +2126,15 @@ createApp({
             }
             return `${quantityText} ${displayUnit}`.trim();
         },
+        stockMatchSummary(matches) {
+            const list = Array.isArray(matches) ? matches : [];
+            if (!list.length) return '未匹配到现有库存';
+            return list.slice(0, 2).map(match => {
+                const amount = this.formatRemainingAmount(match.quantity, match.unit, match.specification);
+                const location = match.storage_location ? `，${match.storage_location}` : '';
+                return `${match.name} ${amount}${location}`;
+            }).join('；');
+        },
         async loadCategories() {
             const res = await fetch('/api/categories');
             this.categories = await res.json();
@@ -2132,6 +2160,14 @@ createApp({
         async loadPurchaseStats() {
             const res = await fetch('/api/purchases/stats');
             this.purchaseStats = await res.json();
+        },
+        async loadMailConfig() {
+            try {
+                const res = await fetch('/api/mail/config');
+                this.mailConfig = await res.json();
+            } catch (e) {
+                this.mailConfig = { smtp_configured: false, approver_configured: false, approver_count: 0 };
+            }
         },
         async loadPurchases() {
             let url = '/api/purchases?';
@@ -2255,6 +2291,8 @@ createApp({
                 unit: item.unit || '瓶',
                 decision,
                 approval_notes: decision === 'approve' ? '同意采购' : '',
+                stock_available: Boolean(item.stock_available),
+                stock_matches: Array.isArray(item.stock_matches) ? item.stock_matches : [],
             };
             this.showApprovalModal = true;
         },
@@ -2315,7 +2353,7 @@ createApp({
             }
             this.showPurchaseModal = false;
             const mailSent = data.approval_email && data.approval_email.sent;
-            this.showToast(mailSent ? '采购申请已提交，已邮件通知审批人' : '采购申请已保存，但审批邮件未发出');
+            this.showToast(this.webApprovalMode ? '采购申请已提交，等待网页审批' : (mailSent ? '采购申请已提交，已邮件通知审批人' : '采购申请已保存，但审批邮件未发出'));
             this.openProcurementView('待审批');
             this.loadStats();
         },
@@ -2361,9 +2399,9 @@ createApp({
             this.showApprovalModal = false;
             const mailSent = data.requester_email && data.requester_email.sent;
             if (isApprove) {
-                this.showToast(mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出');
+                this.showToast(this.webApprovalMode ? '已批准，等待验货' : (mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出'));
             } else {
-                this.showToast(mailSent ? '已驳回，已邮件通知申请人' : '已驳回，但申请人邮件未发出');
+                this.showToast(this.webApprovalMode ? '已驳回采购申请' : (mailSent ? '已驳回，已邮件通知申请人' : '已驳回，但申请人邮件未发出'));
             }
             this.loadPurchases();
             this.loadStats();
@@ -2691,6 +2729,7 @@ createApp({
         this.loadReagents();
         this.loadStats();
         this.loadPurchaseStats();
+        this.loadMailConfig();
     }
 }).mount('#app');
 </script>
