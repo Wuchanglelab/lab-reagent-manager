@@ -1200,8 +1200,8 @@
                                         <div v-if="item.reason" class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{{item.reason}}</div>
                                         <div v-if="item.inspection_notes" class="mt-2 text-xs text-slate-500">验货备注：{{item.inspection_notes}}</div>
                                         <div class="mt-4 flex flex-wrap gap-2">
-                                            <button v-if="item.status === '待审批'" @click="approvePurchase(item)" class="rounded-xl bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">批准</button>
-                                            <button v-if="item.status === '待审批'" @click="rejectPurchase(item)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">驳回</button>
+                                            <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'approve')" class="rounded-xl bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">批准</button>
+                                            <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'reject')" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">驳回</button>
                                             <button v-if="item.status === '已批准'" @click="openReceiveModal(item)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">验货</button>
                                             <button v-if="item.status === '待入库'" @click="stockInPurchase(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
                                             <button v-if="item.reagent_id" @click="openReagentView('all'); searchQuery=item.reagent_name; loadReagents()" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">看库存</button>
@@ -1467,6 +1467,46 @@
         </div>
     </div>
 
+    <!-- Manual Approval Modal -->
+    <div v-if="showApprovalModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showApprovalModal=false">
+        <div class="modal-frame w-full max-w-lg rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">{{approvalForm.decision === 'approve' ? '手动批准采购申请' : '手动驳回采购申请'}}</h3>
+                    <p class="mt-1 text-sm text-slate-500">{{approvalForm.reagent_name}} · {{formatNumber(approvalForm.quantity)}} {{approvalForm.unit}}</p>
+                </div>
+                <button @click="showApprovalModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div class="modal-scroll p-6 space-y-4 bg-slate-50/55">
+                <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    申请人：{{approvalForm.requester || '-'}}<br>
+                    邮箱：{{approvalForm.requester_email || '-'}}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">审批人 *</label>
+                    <input v-model.trim="approvalForm.approver" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="审批人姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">审批人邮箱</label>
+                    <input v-model.trim="approvalForm.approver_email" type="email" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="可留空，用于邮件回执展示">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">{{approvalForm.decision === 'approve' ? '审批备注' : '驳回原因'}}</label>
+                    <textarea v-model="approvalForm.approval_notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" :placeholder="approvalForm.decision === 'approve' ? '可留空，例如：同意采购' : '请填写驳回原因'"></textarea>
+                </div>
+                <div class="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                    即使 SMTP 邮件还未配置，手动审批也会保存状态；邮件发送失败只会显示为回执未发出。
+                </div>
+            </div>
+            <div class="modal-actions p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-3">
+                <button @click="showApprovalModal=false" class="btn-secondary">取消</button>
+                <button @click="submitApprovalDecision()" class="btn-primary" :class="approvalForm.decision === 'reject' ? 'bg-red-600 border-red-600 hover:bg-red-700' : ''" :disabled="!approvalForm.approver">
+                    {{approvalForm.decision === 'approve' ? '确认批准' : '确认驳回'}}
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Receiving Modal -->
     <div v-if="showReceiveModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showReceiveModal=false">
         <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
@@ -1659,11 +1699,13 @@ createApp({
             showUseModal: false,
             showScanModal: false,
             showPurchaseModal: false,
+            showApprovalModal: false,
             showReceiveModal: false,
             editingReagent: null,
             form: this.emptyForm(),
             useForm: this.emptyUseForm(),
             purchaseForm: this.emptyPurchaseForm(),
+            approvalForm: this.emptyApprovalForm(),
             receiveForm: this.emptyReceiveForm(),
             scanItems: [],
             scanStatus: null,
@@ -1898,6 +1940,20 @@ createApp({
                 requester_email: '',
                 reason: '',
                 needed_by: '',
+            };
+        },
+        emptyApprovalForm() {
+            return {
+                request_id: '',
+                reagent_name: '',
+                requester: '',
+                requester_email: '',
+                quantity: 0,
+                unit: '瓶',
+                decision: 'approve',
+                approver: '',
+                approver_email: '',
+                approval_notes: '',
             };
         },
         emptyReceiveForm() {
@@ -2188,6 +2244,20 @@ createApp({
             this.purchaseForm = { ...this.emptyPurchaseForm(), ...this.getContextFormDefaults() };
             this.showPurchaseModal = true;
         },
+        openApprovalModal(item, decision = 'approve') {
+            this.approvalForm = {
+                ...this.emptyApprovalForm(),
+                request_id: item.id,
+                reagent_name: item.reagent_name,
+                requester: item.requester || '',
+                requester_email: item.requester_email || '',
+                quantity: Number(item.quantity || 0),
+                unit: item.unit || '瓶',
+                decision,
+                approval_notes: decision === 'approve' ? '同意采购' : '',
+            };
+            this.showApprovalModal = true;
+        },
         openReceiveModal(item) {
             const quantity = Number(item.quantity || 1);
             this.receiveForm = {
@@ -2266,6 +2336,35 @@ createApp({
             }
             const mailSent = data.requester_email && data.requester_email.sent;
             this.showToast(mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出');
+            this.loadPurchases();
+            this.loadStats();
+        },
+        async submitApprovalDecision() {
+            if (!this.approvalForm.approver || !this.approvalForm.request_id) return;
+            const isApprove = this.approvalForm.decision === 'approve';
+            const endpoint = isApprove ? 'approve' : 'reject';
+            const payload = {
+                approver: this.approvalForm.approver,
+                approver_email: this.approvalForm.approver_email,
+                approval_notes: this.approvalForm.approval_notes,
+            };
+            const res = await fetch(`/api/purchases/${this.approvalForm.request_id}/${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || (isApprove ? '审批失败' : '驳回失败'));
+                return;
+            }
+            this.showApprovalModal = false;
+            const mailSent = data.requester_email && data.requester_email.sent;
+            if (isApprove) {
+                this.showToast(mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出');
+            } else {
+                this.showToast(mailSent ? '已驳回，已邮件通知申请人' : '已驳回，但申请人邮件未发出');
+            }
             this.loadPurchases();
             this.loadStats();
         },
