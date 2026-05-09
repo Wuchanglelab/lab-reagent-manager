@@ -147,18 +147,72 @@
             background-position: -1px -1px;
         }
         .modal-overlay {
-            background: rgba(15, 23, 42, 0.42);
-            backdrop-filter: blur(10px);
+            background: rgba(15, 23, 42, 0.22);
+            backdrop-filter: blur(8px);
             overflow-y: auto;
+            align-items: center;
+            padding: 2.75rem 1.25rem 3.25rem;
         }
         .modal-frame {
             display: flex;
             flex-direction: column;
-            max-height: none;
+            width: min(880px, calc(100vw - 2.5rem));
+            max-height: calc(100vh - 6rem);
+            max-height: calc(100dvh - 6rem);
+            overflow: hidden;
+            margin: 0 auto;
+            border: 1px solid rgba(226, 232, 240, 0.96) !important;
+            border-radius: 1.35rem !important;
+            background: #ffffff !important;
+            box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28) !important;
         }
         .modal-scroll {
-            overflow: visible;
-            overscroll-behavior: auto;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: 1.35rem 1.5rem;
+            background:
+                linear-gradient(180deg, rgba(248, 250, 252, 1), rgba(241, 245, 249, 0.98)) !important;
+        }
+        .modal-actions {
+            flex-shrink: 0;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid rgba(226, 232, 240, 0.95) !important;
+            background: #ffffff !important;
+            box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.05) !important;
+        }
+        .modal-frame > .border-b {
+            flex-shrink: 0;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+            background: #ffffff !important;
+        }
+        .modal-frame h3 {
+            color: #0f172a;
+        }
+        .modal-frame label {
+            color: #475569;
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+        .modal-frame input,
+        .modal-frame select,
+        .modal-frame textarea {
+            border-color: rgba(203, 213, 225, 0.9);
+            border-radius: 0.85rem;
+            background: #ffffff;
+            color: #0f172a;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .modal-frame input:focus,
+        .modal-frame select:focus,
+        .modal-frame textarea:focus {
+            border-color: #111111;
+            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1);
+        }
+        .modal-frame ::placeholder {
+            color: #94a3b8;
         }
         .btn-primary {
             min-width: 124px;
@@ -207,6 +261,467 @@
             background: rgba(148, 163, 184, 0.7);
             border-radius: 9999px;
         }
+
+        /* Visual system refresh: editorial lab console */
+        :root {
+            --bg: #f4f6f8;
+            --panel: #ffffff;
+            --panel-soft: #f8fafc;
+            --ink: #111827;
+            --muted: #64748b;
+            --muted-strong: #475569;
+            --line: #e2e8f0;
+            --line-strong: #cbd5e1;
+            --accent: #111827;
+            --accent-soft: #eef2f7;
+            --success: #059669;
+            --warning: #b45309;
+            --danger: #dc2626;
+            --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+            --shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.05);
+            --radius: 8px;
+        }
+
+        html,
+        body,
+        #app {
+            background: var(--bg);
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        body {
+            color: var(--ink);
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(244, 246, 248, 0.96) 48%, rgba(239, 242, 246, 1) 100%);
+            letter-spacing: 0;
+            overflow-x: hidden;
+        }
+
+        .app-shell {
+            background:
+                linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+                linear-gradient(rgba(15, 23, 42, 0.028) 1px, transparent 1px);
+            background-size: 84px 84px;
+            max-width: 100vw;
+            overflow-x: hidden;
+        }
+
+        .app-shell > .lg\:flex {
+            align-items: flex-start;
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
+        }
+
+        aside.lg\:sticky {
+            width: 18.25rem;
+            flex: 0 0 18.25rem;
+        }
+
+        main.min-h-screen {
+            flex: 1 1 0%;
+            min-width: 0;
+            width: auto !important;
+            overflow-x: hidden;
+        }
+
+        .sidebar-shell {
+            border-radius: var(--radius) !important;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)),
+                #111318;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 26px 70px rgba(15, 23, 42, 0.22) !important;
+        }
+
+        .sidebar-shell::before {
+            background:
+                linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+            background-size: 24px 24px;
+            opacity: 0.8;
+        }
+
+        .sidebar-shell h1 {
+            font-size: 1.55rem !important;
+            letter-spacing: 0;
+        }
+
+        .sidebar-item {
+            border-radius: var(--radius) !important;
+            color: rgba(255, 255, 255, 0.84);
+            transform: none !important;
+        }
+
+        .sidebar-item:hover,
+        .sidebar-item.active {
+            background: rgba(255,255,255,0.13);
+            border-color: rgba(255,255,255,0.16);
+        }
+
+        .sidebar-section-label {
+            color: rgba(255, 255, 255, 0.46);
+            letter-spacing: 0.16em !important;
+        }
+
+        .sidebar-badge {
+            background: rgba(255,255,255,0.14);
+            border-color: rgba(255,255,255,0.18);
+        }
+
+        main.min-h-screen > div {
+            max-width: 1280px;
+            width: 100%;
+            margin: 0 auto;
+            padding-bottom: 3rem !important;
+        }
+
+        .glass-panel {
+            position: static !important;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(18px);
+            border: 1px solid var(--line);
+            border-radius: var(--radius) !important;
+            box-shadow: var(--shadow-soft);
+        }
+
+        .glass-panel h2 {
+            font-size: 2rem !important;
+            line-height: 1.08 !important;
+            letter-spacing: 0 !important;
+            white-space: nowrap;
+        }
+
+        .glass-panel > .flex {
+            display: grid !important;
+            grid-template-columns: 1fr;
+            align-items: start;
+            gap: 1.5rem;
+            min-width: 0;
+        }
+
+        .glass-panel .flex-1 {
+            min-width: 0;
+        }
+
+        .glass-panel .mt-2.flex {
+            display: block !important;
+        }
+
+        .glass-panel .mt-2.flex > div:first-child {
+            min-width: 0;
+        }
+
+        .glass-panel .mt-2.flex > .flex {
+            margin-top: 0.95rem;
+        }
+
+        .glass-panel > .flex > .flex-col {
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            min-width: 0;
+        }
+
+        .glass-panel > .flex > .flex-col button {
+            min-width: 124px;
+            white-space: nowrap;
+        }
+
+        .glass-panel > .flex > .flex-col .relative {
+            flex: 1 1 22rem;
+            min-width: min(22rem, 100%);
+        }
+
+        .glass-panel > .flex > .flex-col button {
+            flex: 0 0 auto;
+        }
+
+        .toolbar-chip {
+            border-radius: 999px;
+            background: #ffffff;
+            border-color: var(--line);
+            color: var(--muted-strong);
+            box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+        }
+
+        .section-card {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-radius: var(--radius) !important;
+            box-shadow: var(--shadow-soft);
+            min-width: 0;
+        }
+
+        .dashboard-hero {
+            background:
+                linear-gradient(135deg, #ffffff 0%, #f8fafc 54%, #eef2f7 100%) !important;
+            border-radius: var(--radius) !important;
+            border: 1px solid var(--line) !important;
+            box-shadow: var(--shadow) !important;
+        }
+
+        .dashboard-hero h3 {
+            max-width: 760px;
+            font-size: clamp(1.7rem, 2.7vw, 2.65rem) !important;
+            letter-spacing: 0 !important;
+        }
+
+        .dashboard-hero .mt-4.flex {
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            min-height: 136px;
+            border-top: 3px solid #111827;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.09);
+        }
+
+        .metric-ring {
+            width: 2.75rem;
+            height: 2.75rem;
+            border-radius: var(--radius);
+            background: var(--accent-soft);
+            color: var(--accent);
+            box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.04);
+        }
+
+        .badge {
+            border-radius: 999px;
+            letter-spacing: 0;
+        }
+
+        .data-table {
+            width: 100%;
+            min-width: 900px;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .section-card > .overflow-x-auto {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+        }
+
+        .data-table thead {
+            background: #f8fafc !important;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .data-table th {
+            color: #334155;
+            font-size: 0.76rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+        }
+
+        .data-table td {
+            vertical-align: middle;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+            word-break: break-word;
+        }
+
+        .data-table th:last-child,
+        .data-table td:last-child {
+            width: 8.5rem;
+        }
+
+        .table-row:hover {
+            background: #f8fafc;
+        }
+
+        .btn-primary,
+        .btn-secondary,
+        button.rounded-2xl,
+        input.rounded-2xl {
+            border-radius: var(--radius) !important;
+        }
+
+        .btn-primary,
+        button.bg-black {
+            background: #111827 !important;
+            border-color: #111827 !important;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+        }
+
+        .btn-primary:hover,
+        button.bg-black:hover {
+            background: #020617 !important;
+        }
+
+        .btn-secondary {
+            border-color: var(--line-strong);
+            color: var(--ink);
+        }
+
+        input,
+        select,
+        textarea {
+            border-color: var(--line) !important;
+            border-radius: var(--radius) !important;
+            color: var(--ink);
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            border-color: #111827 !important;
+            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1) !important;
+            outline: none !important;
+        }
+
+        .modal-frame {
+            border-radius: 14px !important;
+            border-color: rgba(226, 232, 240, 0.95) !important;
+            box-shadow: 0 30px 90px rgba(15, 23, 42, 0.28) !important;
+        }
+
+        .modal-overlay {
+            align-items: center;
+            padding: 3.5rem 1.25rem 4rem;
+        }
+
+        .modal-frame > .border-b,
+        .modal-actions {
+            background: #ffffff !important;
+        }
+
+        .modal-scroll {
+            background:
+                linear-gradient(90deg, rgba(15, 23, 42, 0.026) 1px, transparent 1px),
+                linear-gradient(rgba(15, 23, 42, 0.026) 1px, transparent 1px),
+                #f8fafc !important;
+            background-size: 34px 34px;
+        }
+
+        .modal-scroll > .grid {
+            gap: 1rem 1.25rem;
+        }
+
+        .modal-actions {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.5rem 1.25rem !important;
+        }
+
+        .modal-actions.flex {
+            display: flex !important;
+        }
+
+        .modal-actions > .mb-3 {
+            margin-bottom: 0 !important;
+        }
+
+        .modal-overlay > div:not(.modal-frame) {
+            border-radius: 14px !important;
+            border: 1px solid rgba(226, 232, 240, 0.95) !important;
+            box-shadow: 0 30px 90px rgba(15, 23, 42, 0.28) !important;
+            overflow: hidden;
+        }
+
+        @media (max-width: 1440px) {
+            .glass-panel > .flex > .flex-col {
+                align-items: stretch;
+            }
+
+            .glass-panel > .flex > .flex-col .relative {
+                width: 100% !important;
+            }
+
+            .glass-panel > .flex > .flex-col button {
+                flex: 1 1 auto;
+            }
+        }
+
+        @media (min-width: 1024px) and (max-width: 1380px) {
+            main.min-h-screen > div {
+                max-width: none;
+            }
+        }
+
+        @media (max-width: 1023px) {
+            aside.lg\:sticky {
+                width: auto;
+                flex-basis: auto;
+            }
+
+            .app-shell > .lg\:flex {
+                display: block;
+            }
+
+            main.min-h-screen {
+                width: 100% !important;
+            }
+
+            .sidebar-shell {
+                max-height: none !important;
+            }
+
+            .glass-panel {
+                position: static !important;
+            }
+        }
+
+        @media (max-width: 720px) {
+            main.min-h-screen > div {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+
+            .glass-panel h2 {
+                font-size: 1.55rem !important;
+                white-space: normal;
+            }
+
+            .glass-panel > .flex > .flex-col {
+                flex-direction: column !important;
+            }
+
+            .glass-panel > .flex > .flex-col button,
+            .glass-panel > .flex > .flex-col .relative {
+                width: 100% !important;
+                min-width: 0;
+            }
+
+            .modal-overlay {
+                align-items: flex-start;
+                padding: 1rem 0.75rem 2.25rem;
+            }
+
+            .modal-frame {
+                width: calc(100vw - 1.5rem);
+                max-height: calc(100dvh - 3rem);
+            }
+
+            .modal-scroll > .grid {
+                grid-template-columns: 1fr !important;
+            }
+
+            .modal-actions {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-actions > .flex {
+                justify-content: stretch;
+            }
+
+            .modal-actions button {
+                flex: 1 1 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -232,6 +747,11 @@
                             <span class="text-lg">🧪</span><span class="text-sm font-medium">全部试剂</span>
                             <span class="sidebar-badge ml-auto rounded-full px-2 py-0.5 text-[11px]">{{reagents.length}}</span>
                         </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': currentView === 'procurement'}" @click="openProcurementView()">
+                            <span class="text-lg">🧾</span><span class="text-sm font-medium">采购审批</span>
+                            <span class="sidebar-badge ml-auto rounded-full px-2 py-0.5 text-[11px]">{{purchaseStats.active || 0}}</span>
+                        </div>
                         <div class="sidebar-section-label px-4 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em]">分类导航</div>
                         <div v-for="cat in categories" :key="cat.id"
                              class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
@@ -249,6 +769,10 @@
                         <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
                              @click="openScanModal()">
                             <span class="text-lg">📷</span><span class="text-sm">拍照入库</span>
+                        </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             @click="openPurchaseModal()">
+                            <span class="text-lg">🧾</span><span class="text-sm">采购申请</span>
                         </div>
                         <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
                              :class="{'active': currentView === 'records'}" @click="currentView='records'; loadUsageRecords()">
@@ -272,13 +796,14 @@
                             <div class="text-xs uppercase tracking-[0.22em] text-slate-500">Inventory Command Center</div>
                             <div class="mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                 <div>
-                                    <h2 class="text-2xl font-bold text-slate-900">{{ currentView === 'dashboard' ? '仪表盘概览' : currentView === 'records' ? '使用记录追踪' : (filterCategory || '全部试剂') }}</h2>
-                                    <p class="mt-1 text-sm text-slate-600">聚焦库存状态、风险等级和近期流转记录。</p>
+                                    <h2 class="text-2xl font-bold text-slate-900">{{viewTitle}}</h2>
+                                    <p class="mt-1 text-sm text-slate-600">{{viewSubtitle}}</p>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
                                     <span class="toolbar-chip clickable" @click="openReagentView('all')">总试剂 {{stats.total || 0}}</span>
                                     <span class="toolbar-chip clickable" @click="openReagentView('low_stock')">库存不足 {{stats.low_stock || 0}}</span>
                                     <span class="toolbar-chip clickable" @click="openReagentView('expiring_soon')">即将过期 {{stats.expiring_soon || 0}}</span>
+                                    <span class="toolbar-chip clickable" @click="openProcurementView()">采购待办 {{purchaseStats.active || 0}}</span>
                                 </div>
                             </div>
                         </div>
@@ -292,17 +817,20 @@
                                 </svg>
                             </div>
                             <button @click="openAddModal()" class="rounded-2xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-900">
-                                ➕ 新增试剂
+                                新增试剂
                             </button>
                             <button @click="openScanModal()" class="rounded-2xl border border-black bg-white px-5 py-3 text-sm font-medium text-black transition hover:bg-gray-100">
-                                📷 拍照入库
+                                拍照入库
+                            </button>
+                            <button @click="openPurchaseModal()" class="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-100">
+                                采购申请
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <div v-if="currentView === 'dashboard'" class="pt-6 space-y-6">
-                    <section class="relative overflow-hidden rounded-[1.75rem] border border-gray-200 bg-gradient-to-br from-white via-gray-50 to-gray-100 px-6 py-8 text-slate-900 shadow-2xl lg:px-8">
+                    <section class="dashboard-hero relative overflow-hidden rounded-[1.75rem] border border-gray-200 bg-gradient-to-br from-white via-gray-50 to-gray-100 px-6 py-8 text-slate-900 shadow-2xl lg:px-8">
                         <div class="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-gray-200/18 to-transparent"></div>
                         <div class="relative">
                             <div>
@@ -334,6 +862,7 @@
                                     <button @click="confirmInspection()" class="rounded-2xl border border-gray-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100">
                                         {{ needsInspectionConfirmation ? '确认今日巡检' : '已完成今日巡检' }}
                                     </button>
+                                    <button @click="openProcurementView()" class="rounded-2xl border border-gray-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100">处理采购流程</button>
                                     <button @click="openAddModal()" class="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-100">录入新试剂</button>
                                     <button @click="openReagentView('all')" class="rounded-2xl border border-black bg-black px-5 py-3 text-sm font-medium text-white hover:bg-gray-900">查看全部清单</button>
                                 </div>
@@ -358,6 +887,16 @@
                                     <div class="text-xs uppercase tracking-[0.2em] text-slate-500">30天内到期</div>
                                     <div class="mt-3 text-3xl font-bold text-slate-900">{{stats.expiring_soon || 0}}</div>
                                     <div class="mt-1 text-sm text-slate-600">需尽快复核</div>
+                                </div>
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openProcurementView('待审批')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">待审批</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{purchaseStats.pending_approval || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">采购申请待处理</div>
+                                </div>
+                                <div class="clickable rounded-2xl border border-white/80 bg-white/82 p-4 shadow-sm" @click="openProcurementView('待入库')">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500">待入库</div>
+                                    <div class="mt-3 text-3xl font-bold text-slate-900">{{purchaseStats.ready_to_stock || 0}}</div>
+                                    <div class="mt-1 text-sm text-slate-600">已验货待上架</div>
                                 </div>
                             </div>
                         </div>
@@ -413,6 +952,35 @@
                                 <div class="metric-ring">⏳</div>
                             </div>
                             <div class="mt-4 text-xs text-slate-400">30 天内到期的项目</div>
+                        </div>
+                    </section>
+
+                    <section class="section-card p-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div>
+                                <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Procurement Workflow</div>
+                                <h3 class="mt-2 text-xl font-bold text-slate-900">采购、验货、入库流程</h3>
+                                <p class="mt-1 text-sm text-slate-500">从申请到审批、到货验收、合格入库，和库存清单保持同步。</p>
+                            </div>
+                            <button @click="openPurchaseModal()" class="btn-primary">新建采购申请</button>
+                        </div>
+                        <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+                            <button @click="openProcurementView('待审批')" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left hover:bg-white">
+                                <div class="text-sm text-slate-500">待审批</div>
+                                <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.pending_approval || 0}}</div>
+                            </button>
+                            <button @click="openProcurementView('已批准')" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left hover:bg-white">
+                                <div class="text-sm text-slate-500">待验货</div>
+                                <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.approved || 0}}</div>
+                            </button>
+                            <button @click="openProcurementView('待入库')" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left hover:bg-white">
+                                <div class="text-sm text-slate-500">待入库</div>
+                                <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.ready_to_stock || 0}}</div>
+                            </button>
+                            <button @click="openProcurementView('已入库')" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-left hover:bg-white">
+                                <div class="text-sm text-slate-500">已入库</div>
+                                <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.stocked || 0}}</div>
+                            </button>
                         </div>
                     </section>
 
@@ -474,13 +1042,13 @@
                                 <div class="mt-4 space-y-3">
                                     <div v-for="r in stats.recent_usage" :key="r.id" class="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
                                         <div class="flex items-start gap-3">
-                                            <div class="grid h-10 w-10 place-items-center rounded-2xl" :class="r.action === '入库' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
-                                                {{r.action === '入库' ? '↘' : '↗'}}
+                                            <div class="grid h-10 w-10 place-items-center rounded-2xl" :class="isInboundAction(r.action) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'">
+                                                {{isInboundAction(r.action) ? '↘' : '↗'}}
                                             </div>
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex flex-wrap items-center gap-2">
                                                     <span class="font-medium text-slate-800">{{r.reagent_name}}</span>
-                                                    <span :class="r.action === '入库' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'" class="badge">{{r.action}}</span>
+                                                    <span :class="isInboundAction(r.action) ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'" class="badge">{{r.action}}</span>
                                                 </div>
                                                 <div class="mt-1 text-sm text-slate-500">数量 ×{{formatUsageRecord(r)}} · {{r.user_name}}</div>
                                             </div>
@@ -574,6 +1142,80 @@
                     </section>
                 </div>
 
+                <div v-if="currentView === 'procurement'" class="pt-6 space-y-5">
+                    <section class="section-card overflow-hidden">
+                        <div class="border-b border-slate-100 px-6 py-5">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Purchase Approval</div>
+                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">采购审批工作台</h3>
+                                    <p class="mt-1 text-sm text-slate-500">提交采购申请，完成审批、验货和入库，合格数量会自动进入库存。</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button @click="openPurchaseModal()" class="btn-primary">新建申请</button>
+                                    <button @click="openProcurementView()" class="btn-secondary">全部流程</button>
+                                </div>
+                            </div>
+                            <div class="mt-5 flex flex-wrap gap-2">
+                                <button v-for="option in procurementFilters" :key="option.value"
+                                        @click="openProcurementView(option.value)"
+                                        class="toolbar-chip clickable"
+                                        :class="procurementFilter === option.value ? 'ring-2 ring-black' : ''">
+                                    {{option.label}} {{option.count}}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4 p-5 xl:grid-cols-4">
+                            <div v-for="column in procurementColumns" :key="column.status" class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <div class="text-xs uppercase tracking-[0.18em] text-slate-400">{{column.caption}}</div>
+                                        <h4 class="mt-1 font-semibold text-slate-900">{{column.title}}</h4>
+                                    </div>
+                                    <span class="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">{{column.items.length}}</span>
+                                </div>
+                                <div class="mt-4 space-y-3">
+                                    <div v-for="item in column.items" :key="item.id" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <div class="font-semibold text-slate-900">{{item.reagent_name}}</div>
+                                                <div class="mt-1 text-xs text-slate-500">{{item.brand || '未填品牌'}} · {{item.catalog_number || '未填货号'}}</div>
+                                            </div>
+                                            <span class="badge" :class="purchaseStatusClass(item.status)">{{item.status}}</span>
+                                        </div>
+                                        <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                                            <div>申请: {{item.requester}}</div>
+                                            <div class="truncate" :title="item.requester_email || ''">邮箱: {{item.requester_email || '-'}}</div>
+                                            <div>数量: {{formatNumber(item.quantity)}} {{item.unit || ''}}</div>
+                                            <div>供应商: {{item.supplier || '-'}}</div>
+                                            <div>预算: {{item.expected_price ? '¥' + item.expected_price : '-'}}</div>
+                                            <div v-if="item.approver" class="truncate" :title="item.approver_email || ''">审批: {{item.approver}}</div>
+                                        </div>
+                                        <div class="mt-3 flex flex-wrap gap-2 text-[11px]">
+                                            <span v-if="item.approver_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知审批人</span>
+                                            <span v-else-if="item.approver_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.approver_email_error">审批邮件未发出</span>
+                                            <span v-if="item.requester_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知申请人</span>
+                                            <span v-else-if="item.requester_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.requester_email_error">回执邮件未发出</span>
+                                        </div>
+                                        <div v-if="item.reason" class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">{{item.reason}}</div>
+                                        <div v-if="item.inspection_notes" class="mt-2 text-xs text-slate-500">验货备注：{{item.inspection_notes}}</div>
+                                        <div class="mt-4 flex flex-wrap gap-2">
+                                            <button v-if="item.status === '待审批'" @click="approvePurchase(item)" class="rounded-xl bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">批准</button>
+                                            <button v-if="item.status === '待审批'" @click="rejectPurchase(item)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">驳回</button>
+                                            <button v-if="item.status === '已批准'" @click="openReceiveModal(item)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">验货</button>
+                                            <button v-if="item.status === '待入库'" @click="stockInPurchase(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
+                                            <button v-if="item.reagent_id" @click="openReagentView('all'); searchQuery=item.reagent_name; loadReagents()" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">看库存</button>
+                                        </div>
+                                    </div>
+                                    <div v-if="column.items.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-white/70 px-4 py-8 text-center text-sm text-slate-400">
+                                        暂无记录
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
                 <div v-if="currentView === 'records'" class="pt-6 space-y-5">
                     <section class="section-card overflow-hidden">
                         <div class="border-b border-slate-100 px-6 py-5">
@@ -603,7 +1245,7 @@
                                     <tr v-for="r in usageRecords" :key="r.id" class="table-row border-t border-slate-100">
                                         <td class="px-5 py-4 text-slate-500">{{r.created_at}}</td>
                                         <td class="px-5 py-4">
-                                            <span class="badge" :class="r.action === '入库' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'">{{r.action}}</span>
+                                            <span class="badge" :class="isInboundAction(r.action) ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'">{{r.action}}</span>
                                         </td>
                                         <td class="px-5 py-4 font-medium text-slate-800">{{r.reagent_name}}</td>
                                         <td class="px-5 py-4 text-slate-600">{{formatUsageRecord(r)}}</td>
@@ -722,7 +1364,7 @@
                     <textarea v-model="form.notes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="其他备注信息"></textarea>
                 </div>
             </div>
-            <div class="p-6 border-t border-slate-100 bg-white">
+            <div class="modal-actions p-6 border-t border-slate-100 bg-white">
                 <div v-if="!editingReagent" class="mb-3 text-xs text-slate-500">
                     填完或核对完信息后，点击右下角“确认添加”
                 </div>
@@ -735,6 +1377,130 @@
                         {{editingReagent ? '保存修改' : '确认添加'}}
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Purchase Request Modal -->
+    <div v-if="showPurchaseModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showPurchaseModal=false">
+        <div class="modal-frame w-full max-w-2xl rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl">
+            <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">新建采购申请</h3>
+                    <p class="mt-1 text-sm text-slate-500">提交后进入待审批队列，批准后可做验货和入库。</p>
+                </div>
+                <button @click="showPurchaseModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+            </div>
+            <div class="modal-scroll p-6 space-y-4 bg-slate-50/55">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">试剂名称 *</label>
+                        <input v-model="purchaseForm.reagent_name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：胎牛血清">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">申请人 *</label>
+                        <input v-model="purchaseForm.requester" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">申请人邮箱 *</label>
+                        <input v-model.trim="purchaseForm.requester_email" type="email" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">品牌</label>
+                        <input v-model="purchaseForm.brand" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="品牌/厂家">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">货号</label>
+                        <input v-model="purchaseForm.catalog_number" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="产品编号">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">规格</label>
+                        <input v-model="purchaseForm.specification" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="500mL / 25g">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">数量</label>
+                        <div class="flex gap-2">
+                            <input v-model.number="purchaseForm.quantity" type="number" min="0.01" step="0.5" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <select v-model="purchaseForm.unit" class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                <option>瓶</option><option>盒</option><option>袋</option><option>支</option><option>个</option><option>包</option><option>kg</option><option>g</option><option>mL</option><option>L</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">供应商</label>
+                        <input v-model="purchaseForm.supplier" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="供应商名称">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">预计单价/总价 (元)</label>
+                        <input v-model.number="purchaseForm.expected_price" type="number" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">期望到货日期</label>
+                        <input v-model="purchaseForm.needed_by" type="date" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">分类</label>
+                        <select v-model="purchaseForm.category" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <option v-for="cat in categories" :key="cat.id" :value="cat.name">{{cat.icon}} {{cat.name}}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">存储温度</label>
+                        <input v-model="purchaseForm.storage_temp" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="室温 / 2-8°C / -20°C">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">危险等级</label>
+                        <select v-model="purchaseForm.hazard_level" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                            <option>普通</option><option>易燃</option><option>腐蚀</option><option>有毒</option><option>剧毒</option><option>易爆</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">采购原因</label>
+                    <textarea v-model="purchaseForm.reason" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="库存不足、项目实验需要、替换过期批次等"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-3">
+                <button @click="showPurchaseModal=false" class="btn-secondary">取消</button>
+                <button @click="savePurchaseRequest()" class="btn-primary" :disabled="!purchaseForm.reagent_name || !purchaseForm.requester || !purchaseForm.requester_email">提交申请</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Receiving Modal -->
+    <div v-if="showReceiveModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showReceiveModal=false">
+        <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100">
+                <h3 class="text-lg font-bold text-gray-800">采购验货</h3>
+                <p class="mt-1 text-sm text-slate-500">{{receiveForm.reagent_name}}，申请数量 {{formatNumber(receiveForm.request_quantity)}} {{receiveForm.unit}}</p>
+            </div>
+            <div class="p-6 space-y-4 bg-slate-50/55">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">验货人 *</label>
+                    <input v-model="receiveForm.receiver" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">到货数量</label>
+                        <input v-model.number="receiveForm.received_quantity" type="number" min="0" step="0.5" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">合格数量</label>
+                        <input v-model.number="receiveForm.accepted_quantity" type="number" min="0" step="0.5" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">入库位置</label>
+                    <input v-model="receiveForm.storage_location" list="storage-location-options" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：A区-2号柜-3层">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">验货备注</label>
+                    <textarea v-model="receiveForm.inspection_notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="包装完整、批号一致、温控正常等"></textarea>
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button @click="showReceiveModal=false" class="btn-secondary">取消</button>
+                <button @click="submitReceive()" class="btn-primary" :disabled="!receiveForm.receiver">确认验货</button>
             </div>
         </div>
     </div>
@@ -883,15 +1649,22 @@ createApp({
             storageLocations: [],
             reagents: [],
             usageRecords: [],
+            purchases: [],
+            purchaseStats: {},
             stats: {},
             searchQuery: '',
             filterCategory: '',
+            procurementFilter: '',
             showReagentModal: false,
             showUseModal: false,
             showScanModal: false,
+            showPurchaseModal: false,
+            showReceiveModal: false,
             editingReagent: null,
             form: this.emptyForm(),
             useForm: this.emptyUseForm(),
+            purchaseForm: this.emptyPurchaseForm(),
+            receiveForm: this.emptyReceiveForm(),
             scanItems: [],
             scanStatus: null,
             scanError: '',
@@ -909,6 +1682,46 @@ createApp({
         };
     },
     computed: {
+        viewTitle() {
+            if (this.currentView === 'dashboard') return '仪表盘概览';
+            if (this.currentView === 'procurement') return '采购审批与入库';
+            if (this.currentView === 'records') return '使用记录追踪';
+            return this.filterCategory || '全部试剂';
+        },
+        viewSubtitle() {
+            if (this.currentView === 'procurement') {
+                return '把采购申请、审批、验货和库存入库放在同一个流程里。';
+            }
+            return '聚焦库存状态、风险等级和近期流转记录。';
+        },
+        procurementFilters() {
+            return [
+                { value: '', label: '全部', count: this.purchaseStats.total || 0 },
+                { value: '待审批', label: '待审批', count: this.purchaseStats.pending_approval || 0 },
+                { value: '已批准', label: '待验货', count: this.purchaseStats.approved || 0 },
+                { value: '待入库', label: '待入库', count: this.purchaseStats.ready_to_stock || 0 },
+                { value: '已入库', label: '已入库', count: this.purchaseStats.stocked || 0 },
+                { value: '已驳回', label: '已驳回', count: this.purchaseStats.rejected || 0 },
+            ];
+        },
+        procurementColumns() {
+            const visibleStatuses = this.procurementFilter
+                ? [this.procurementFilter]
+                : ['待审批', '已批准', '待入库', '已入库'];
+            const meta = {
+                '待审批': { title: '审批', caption: 'Approval' },
+                '已批准': { title: '验货', caption: 'Receiving' },
+                '待入库': { title: '入库', caption: 'Stock In' },
+                '已入库': { title: '完成', caption: 'Closed' },
+                '已驳回': { title: '驳回', caption: 'Rejected' },
+            };
+            return visibleStatuses.map(status => ({
+                status,
+                title: meta[status] ? meta[status].title : status,
+                caption: meta[status] ? meta[status].caption : 'Workflow',
+                items: this.purchases.filter(item => item.status === status),
+            }));
+        },
         scanBusy() {
             return this.scanStatus === 'uploading' || this.scanStatus === 'recognizing';
         },
@@ -1062,6 +1875,42 @@ createApp({
                 user_name: '',
                 purpose: '',
                 notes: '',
+            };
+        },
+        emptyPurchaseForm() {
+            return {
+                reagent_name: '',
+                name_en: '',
+                cas_number: '',
+                catalog_number: '',
+                brand: '',
+                specification: '',
+                purity: '',
+                unit: '瓶',
+                quantity: 1,
+                low_stock_threshold: 1,
+                category: '常用试剂',
+                storage_temp: '',
+                hazard_level: '普通',
+                supplier: '',
+                expected_price: null,
+                requester: '',
+                requester_email: '',
+                reason: '',
+                needed_by: '',
+            };
+        },
+        emptyReceiveForm() {
+            return {
+                request_id: '',
+                reagent_name: '',
+                request_quantity: 0,
+                unit: '瓶',
+                receiver: '',
+                received_quantity: 1,
+                accepted_quantity: 1,
+                storage_location: '',
+                inspection_notes: '',
             };
         },
         formatNumber(value) {
@@ -1220,6 +2069,21 @@ createApp({
         async loadStats() {
             const res = await fetch('/api/stats');
             this.stats = await res.json();
+            if (this.stats.procurement) {
+                this.purchaseStats = this.stats.procurement;
+            }
+        },
+        async loadPurchaseStats() {
+            const res = await fetch('/api/purchases/stats');
+            this.purchaseStats = await res.json();
+        },
+        async loadPurchases() {
+            let url = '/api/purchases?';
+            if (this.procurementFilter) url += `status=${encodeURIComponent(this.procurementFilter)}&`;
+            if (this.searchQuery) url += `search=${encodeURIComponent(this.searchQuery)}&`;
+            const res = await fetch(url);
+            this.purchases = await res.json();
+            await this.loadPurchaseStats();
         },
         async runAiInspectionReview() {
             this.aiInspectionLoading = true;
@@ -1246,8 +2110,12 @@ createApp({
         debounceSearch() {
             clearTimeout(this.searchTimer);
             this.searchTimer = setTimeout(() => {
-                this.currentView = 'reagents';
-                this.loadReagents();
+                if (this.currentView === 'procurement') {
+                    this.loadPurchases();
+                } else {
+                    this.currentView = 'reagents';
+                    this.loadReagents();
+                }
             }, 300);
         },
         openAddModal() {
@@ -1264,6 +2132,13 @@ createApp({
                 this.quickFilter = filter;
             }
             this.loadReagents();
+        },
+        openProcurementView(status = '') {
+            this.currentView = 'procurement';
+            this.filterCategory = '';
+            this.quickFilter = '';
+            this.procurementFilter = status || '';
+            this.loadPurchases();
         },
         openCategoryFilter(name) {
             const shortcutMap = {
@@ -1309,6 +2184,24 @@ createApp({
             this.scanImportedCount = 0;
             this.showScanModal = true;
         },
+        openPurchaseModal() {
+            this.purchaseForm = { ...this.emptyPurchaseForm(), ...this.getContextFormDefaults() };
+            this.showPurchaseModal = true;
+        },
+        openReceiveModal(item) {
+            const quantity = Number(item.quantity || 1);
+            this.receiveForm = {
+                ...this.emptyReceiveForm(),
+                request_id: item.id,
+                reagent_name: item.reagent_name,
+                request_quantity: quantity,
+                unit: item.unit || '瓶',
+                received_quantity: quantity,
+                accepted_quantity: quantity,
+                storage_location: item.storage_location || '',
+            };
+            this.showReceiveModal = true;
+        },
         matchesStorageShortcut(reagent, marker) {
             const category = String(reagent.category || '').trim();
             const storageTemp = String(reagent.storage_temp || '').trim();
@@ -1336,6 +2229,102 @@ createApp({
                 payload.storage_temp = '-80°C';
             }
             return payload;
+        },
+        async savePurchaseRequest() {
+            if (!this.purchaseForm.reagent_name || !this.purchaseForm.requester || !this.purchaseForm.requester_email) return;
+            const payload = this.prepareFormPayload(this.purchaseForm);
+            const res = await fetch('/api/purchases', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || '提交采购申请失败');
+                return;
+            }
+            this.showPurchaseModal = false;
+            const mailSent = data.approval_email && data.approval_email.sent;
+            this.showToast(mailSent ? '采购申请已提交，已邮件通知审批人' : '采购申请已保存，但审批邮件未发出');
+            this.openProcurementView('待审批');
+            this.loadStats();
+        },
+        async approvePurchase(item) {
+            const approver = prompt('审批人姓名');
+            if (!approver) return;
+            const approver_email = prompt('审批人邮箱（可留空）') || '';
+            const approval_notes = prompt('审批备注（可留空）') || '';
+            const res = await fetch(`/api/purchases/${item.id}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approver, approver_email, approval_notes }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || '审批失败');
+                return;
+            }
+            const mailSent = data.requester_email && data.requester_email.sent;
+            this.showToast(mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出');
+            this.loadPurchases();
+            this.loadStats();
+        },
+        async rejectPurchase(item) {
+            const approver = prompt('审批人姓名');
+            if (!approver) return;
+            const approver_email = prompt('审批人邮箱（可留空）') || '';
+            const approval_notes = prompt('驳回原因') || '';
+            const res = await fetch(`/api/purchases/${item.id}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approver, approver_email, approval_notes }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || '驳回失败');
+                return;
+            }
+            const mailSent = data.requester_email && data.requester_email.sent;
+            this.showToast(mailSent ? '已驳回，已邮件通知申请人' : '已驳回，但申请人邮件未发出');
+            this.loadPurchases();
+            this.loadStats();
+        },
+        async submitReceive() {
+            if (!this.receiveForm.receiver) return;
+            const res = await fetch(`/api/purchases/${this.receiveForm.request_id}/receive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.receiveForm),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || '验货失败');
+                return;
+            }
+            this.showReceiveModal = false;
+            this.showToast('验货完成，等待入库');
+            this.openProcurementView('待入库');
+            this.loadStats();
+        },
+        async stockInPurchase(item) {
+            const operator = prompt('入库人姓名');
+            if (!operator) return;
+            const storage_location = item.storage_location || prompt('入库位置（可留空）') || '';
+            const res = await fetch(`/api/purchases/${item.id}/stock-in`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operator, storage_location }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                this.showToast(data.error || '入库失败');
+                return;
+            }
+            this.showToast(`入库成功，库存已更新`);
+            this.loadPurchases();
+            this.loadReagents();
+            this.loadStats();
+            this.loadStorageLocations();
         },
         async saveReagent() {
             if (!this.form.name) return;
@@ -1559,6 +2548,19 @@ createApp({
             const map = { '普通': 'bg-gray-100 text-gray-600', '易燃': 'bg-red-100 text-red-700', '腐蚀': 'bg-yellow-100 text-yellow-700', '有毒': 'bg-orange-100 text-orange-700', '剧毒': 'bg-red-200 text-red-800', '易爆': 'bg-purple-100 text-purple-700' };
             return map[level] || 'bg-gray-100 text-gray-600';
         },
+        purchaseStatusClass(status) {
+            const map = {
+                '待审批': 'bg-amber-100 text-amber-700',
+                '已批准': 'bg-sky-100 text-sky-700',
+                '待入库': 'bg-emerald-100 text-emerald-700',
+                '已入库': 'bg-gray-100 text-gray-600',
+                '已驳回': 'bg-red-100 text-red-700',
+            };
+            return map[status] || 'bg-gray-100 text-gray-600';
+        },
+        isInboundAction(action) {
+            return String(action || '').includes('入库');
+        },
         isLowStock(reagent) {
             const quantity = reagent.quantity || 0;
             const threshold = reagent.low_stock_threshold == null ? 1 : reagent.low_stock_threshold;
@@ -1583,11 +2585,13 @@ createApp({
         },
     },
     mounted() {
+        window.scrollTo(0, window.scrollY || 0);
         this.lastInspectionConfirmedAt = localStorage.getItem('lab_inspection_confirmed_at');
         this.loadCategories();
         this.loadStorageLocations();
         this.loadReagents();
         this.loadStats();
+        this.loadPurchaseStats();
     }
 }).mount('#app');
 </script>

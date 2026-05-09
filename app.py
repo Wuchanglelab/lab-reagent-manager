@@ -3,10 +3,13 @@ import io
 import mimetypes
 import os
 import re
+import smtplib
 import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
+from email.message import EmailMessage
+from email.utils import formataddr
 
 import requests
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -31,7 +34,9 @@ DATA_DIR = os.environ.get("DATA_DIR", DEFAULT_DATA_DIR)
 LOCAL_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 LOCAL_DATABASE = os.path.join(DATA_DIR, "lab_reagents.db")
 DEFAULT_TEAMPLUS_API_KEY = ""
+DEFAULT_ANTHROPIC_BASE_URL = "https://codex.0u0o.com"
 DEFAULT_CATEGORY_NAMES = ["常用试剂", "危险试剂", "-20°C冰箱", "-80°C冰箱", "实验耗材", "生物样品"]
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 STORAGE_SHORTCUT_CATEGORY_MAP = {
     "-20°C冰箱": "-20",
     "-80°C冰箱": "-80",
@@ -105,6 +110,50 @@ class UsageRecord(Base):
     reagent = relationship("Reagent", back_populates="usage_records")
 
 
+class PurchaseRequest(Base):
+    __tablename__ = "purchase_requests"
+
+    id = Column(String, primary_key=True)
+    reagent_name = Column(String, nullable=False)
+    name_en = Column(String)
+    cas_number = Column(String)
+    catalog_number = Column(String)
+    brand = Column(String)
+    specification = Column(String)
+    purity = Column(String)
+    unit = Column(String, default="瓶")
+    quantity = Column(Float, default=1)
+    low_stock_threshold = Column(Float, default=1)
+    category = Column(String, default="常用试剂")
+    storage_temp = Column(String)
+    hazard_level = Column(String, default="普通")
+    supplier = Column(String)
+    expected_price = Column(Float)
+    requester = Column(String, nullable=False)
+    requester_email = Column(String)
+    reason = Column(String)
+    needed_by = Column(String)
+    approver = Column(String)
+    approver_email = Column(String)
+    approval_notes = Column(String)
+    receiver = Column(String)
+    received_quantity = Column(Float)
+    accepted_quantity = Column(Float)
+    storage_location = Column(String)
+    inspection_notes = Column(String)
+    reagent_id = Column(String, ForeignKey("reagents.id"))
+    status = Column(String, default="待审批")
+    created_at = Column(String, default=lambda: now_text())
+    updated_at = Column(String, default=lambda: now_text())
+    approved_at = Column(String)
+    received_at = Column(String)
+    stocked_at = Column(String)
+    approver_notified_at = Column(String)
+    requester_notified_at = Column(String)
+    approver_email_error = Column(String)
+    requester_email_error = Column(String)
+
+
 def now_text():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -148,9 +197,13 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 
 def get_ai_client_config():
     return (
-        os.environ.get("BASE_URL", "https://teamplus.space/v1"),
-        os.environ.get("TEAMPLUS_API_KEY", DEFAULT_TEAMPLUS_API_KEY),
-        os.environ.get("MODEL", "gpt-5.4"),
+        os.environ.get("ANTHROPIC_BASE_URL")
+        or os.environ.get("BASE_URL")
+        or DEFAULT_ANTHROPIC_BASE_URL,
+        os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        or os.environ.get("TEAMPLUS_API_KEY")
+        or DEFAULT_TEAMPLUS_API_KEY,
+        os.environ.get("ANTHROPIC_MODEL") or os.environ.get("MODEL", "gpt-5.4"),
     )
 
 
@@ -161,6 +214,15 @@ def parse_model_json_content(resp_data):
     if result_text.startswith("```"):
         result_text = result_text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     return json.loads(result_text)
+
+
+def chat_completions_url(api_base):
+    base = str(api_base or "").rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
+    return f"{base}/v1/chat/completions"
 
 
 UNIT_ALIASES = {
@@ -269,11 +331,23 @@ def init_db():
         ensure_column("usage_records", "usage_unit", "TEXT")
         ensure_column("usage_records", "converted_quantity", "REAL")
         ensure_column("usage_records", "converted_unit", "TEXT")
+        ensure_column("purchase_requests", "requester_email", "TEXT")
+        ensure_column("purchase_requests", "approver_email", "TEXT")
+        ensure_column("purchase_requests", "approver_notified_at", "TEXT")
+        ensure_column("purchase_requests", "requester_notified_at", "TEXT")
+        ensure_column("purchase_requests", "approver_email_error", "TEXT")
+        ensure_column("purchase_requests", "requester_email_error", "TEXT")
     else:
         ensure_column("reagents", "low_stock_threshold", "DOUBLE PRECISION DEFAULT 1")
         ensure_column("usage_records", "usage_unit", "TEXT")
         ensure_column("usage_records", "converted_quantity", "DOUBLE PRECISION")
         ensure_column("usage_records", "converted_unit", "TEXT")
+        ensure_column("purchase_requests", "requester_email", "TEXT")
+        ensure_column("purchase_requests", "approver_email", "TEXT")
+        ensure_column("purchase_requests", "approver_notified_at", "TEXT")
+        ensure_column("purchase_requests", "requester_notified_at", "TEXT")
+        ensure_column("purchase_requests", "approver_email_error", "TEXT")
+        ensure_column("purchase_requests", "requester_email_error", "TEXT")
 
     session = SessionLocal()
     try:
@@ -299,12 +373,12 @@ init_db()
 def post_chat_completion(payload, timeout=120, max_retries=3):
     api_base, api_key, _ = get_ai_client_config()
     if not api_key:
-        raise RuntimeError("未配置 TEAMPLUS_API_KEY")
+        raise RuntimeError("未配置 ANTHROPIC_AUTH_TOKEN")
     last_error = None
     for attempt in range(max_retries):
         try:
             response = requests.post(
-                f"{api_base}/chat/completions",
+                chat_completions_url(api_base),
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
@@ -518,6 +592,216 @@ def serialize_usage_row(record, reagent_name, stock_unit):
     return data
 
 
+def serialize_purchase_request(row):
+    data = model_to_dict(row)
+    data["quantity"] = float(data["quantity"] or 0)
+    data["received_quantity"] = None if data["received_quantity"] is None else float(data["received_quantity"])
+    data["accepted_quantity"] = None if data["accepted_quantity"] is None else float(data["accepted_quantity"])
+    data["expected_price"] = None if data["expected_price"] is None else float(data["expected_price"])
+    return data
+
+
+def compute_procurement_stats(rows):
+    counts = {
+        "total": len(rows),
+        "pending_approval": 0,
+        "approved": 0,
+        "ready_to_stock": 0,
+        "stocked": 0,
+        "rejected": 0,
+        "active": 0,
+    }
+    for row in rows:
+        status = row.status or "待审批"
+        if status == "待审批":
+            counts["pending_approval"] += 1
+        elif status == "已批准":
+            counts["approved"] += 1
+        elif status == "待入库":
+            counts["ready_to_stock"] += 1
+        elif status == "已入库":
+            counts["stocked"] += 1
+        elif status == "已驳回":
+            counts["rejected"] += 1
+    counts["active"] = counts["pending_approval"] + counts["approved"] + counts["ready_to_stock"]
+    return counts
+
+
+def build_reagent_from_purchase(purchase, quantity):
+    reagent_id = str(uuid.uuid4())[:8]
+    return Reagent(
+        id=reagent_id,
+        name=purchase.reagent_name,
+        name_en=purchase.name_en,
+        cas_number=purchase.cas_number,
+        catalog_number=purchase.catalog_number,
+        brand=purchase.brand,
+        specification=purchase.specification,
+        purity=purchase.purity,
+        unit=purchase.unit or "瓶",
+        quantity=quantity,
+        low_stock_threshold=purchase.low_stock_threshold if purchase.low_stock_threshold is not None else 1,
+        category=purchase.category or "常用试剂",
+        storage_location=purchase.storage_location,
+        storage_temp=purchase.storage_temp,
+        hazard_level=purchase.hazard_level or "普通",
+        supplier=purchase.supplier,
+        price=purchase.expected_price,
+        notes=f"由采购申请 {purchase.id} 入库",
+        created_at=now_text(),
+        updated_at=now_text(),
+    )
+
+
+def split_email_list(value):
+    if not value:
+        return []
+    emails = []
+    for item in re.split(r"[,;\s]+", str(value)):
+        email = item.strip()
+        if email:
+            emails.append(email)
+    return emails
+
+
+def is_valid_email(value):
+    return bool(EMAIL_PATTERN.match(str(value or "").strip()))
+
+
+def get_mail_config():
+    username = os.environ.get("SMTP_USERNAME") or os.environ.get("MAIL_USERNAME")
+    from_email = (
+        os.environ.get("SMTP_FROM")
+        or os.environ.get("MAIL_DEFAULT_SENDER")
+        or username
+    )
+    return {
+        "host": os.environ.get("SMTP_HOST") or os.environ.get("MAIL_SERVER"),
+        "port": int(os.environ.get("SMTP_PORT") or os.environ.get("MAIL_PORT") or 587),
+        "username": username,
+        "password": os.environ.get("SMTP_PASSWORD") or os.environ.get("MAIL_PASSWORD"),
+        "from_email": from_email,
+        "from_name": os.environ.get("SMTP_FROM_NAME") or os.environ.get("MAIL_FROM_NAME") or "实验室试剂管理系统",
+        "use_ssl": str(os.environ.get("SMTP_USE_SSL") or "").lower() in {"1", "true", "yes", "on"},
+        "use_tls": str(os.environ.get("SMTP_USE_TLS") or "true").lower() in {"1", "true", "yes", "on"},
+    }
+
+
+def get_approver_emails():
+    return split_email_list(os.environ.get("LAB_APPROVER_EMAILS") or os.environ.get("APPROVER_EMAILS"))
+
+
+def get_app_base_url():
+    configured = os.environ.get("APP_BASE_URL") or os.environ.get("PUBLIC_APP_URL")
+    if configured:
+        return configured.rstrip("/")
+    try:
+        return request.host_url.rstrip("/")
+    except RuntimeError:
+        return ""
+
+
+def mail_is_configured():
+    config = get_mail_config()
+    return bool(config["host"] and config["from_email"])
+
+
+def send_mail(subject, recipients, body, reply_to=None):
+    recipients = [email for email in split_email_list(",".join(recipients or [])) if is_valid_email(email)]
+    if not recipients:
+        return {"sent": False, "error": "没有有效收件人"}
+
+    config = get_mail_config()
+    if not config["host"] or not config["from_email"]:
+        return {"sent": False, "error": "未配置 SMTP_HOST/SMTP_FROM，邮件未发送"}
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = formataddr((config["from_name"], config["from_email"]))
+    msg["To"] = ", ".join(recipients)
+    if reply_to and is_valid_email(reply_to):
+        msg["Reply-To"] = reply_to
+    msg.set_content(body)
+
+    try:
+        if config["use_ssl"]:
+            with smtplib.SMTP_SSL(config["host"], config["port"], timeout=20) as smtp:
+                if config["username"] and config["password"]:
+                    smtp.login(config["username"], config["password"])
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(config["host"], config["port"], timeout=20) as smtp:
+                if config["use_tls"]:
+                    smtp.starttls()
+                if config["username"] and config["password"]:
+                    smtp.login(config["username"], config["password"])
+                smtp.send_message(msg)
+        return {"sent": True, "recipients": recipients}
+    except Exception as exc:
+        return {"sent": False, "error": str(exc)}
+
+
+def purchase_summary_lines(purchase):
+    return [
+        f"申请编号：{purchase.id}",
+        f"试剂名称：{purchase.reagent_name}",
+        f"英文名称：{purchase.name_en or '-'}",
+        f"CAS号：{purchase.cas_number or '-'}",
+        f"品牌/货号：{purchase.brand or '-'} / {purchase.catalog_number or '-'}",
+        f"规格：{purchase.specification or '-'}",
+        f"数量：{purchase.quantity or 0} {purchase.unit or ''}".strip(),
+        f"供应商：{purchase.supplier or '-'}",
+        f"预计价格：{purchase.expected_price if purchase.expected_price is not None else '-'}",
+        f"期望到货：{purchase.needed_by or '-'}",
+        f"申请人：{purchase.requester}",
+        f"申请人邮箱：{purchase.requester_email or '-'}",
+        f"采购原因：{purchase.reason or '-'}",
+        f"当前状态：{purchase.status or '待审批'}",
+    ]
+
+
+def notify_purchase_approvers(purchase):
+    approver_emails = get_approver_emails()
+    base_url = get_app_base_url()
+    link = f"{base_url}/" if base_url else ""
+    body_lines = [
+        "有新的试剂采购申请需要审批。",
+        "",
+        *purchase_summary_lines(purchase),
+        "",
+        "请打开试剂管理系统进入“采购审批”处理。",
+    ]
+    if link:
+        body_lines.extend(["", f"系统地址：{link}"])
+    return send_mail(
+        subject=f"[试剂采购审批] {purchase.reagent_name} - {purchase.requester}",
+        recipients=approver_emails,
+        body="\n".join(body_lines),
+        reply_to=purchase.requester_email,
+    )
+
+
+def notify_purchase_requester(purchase, approved):
+    decision = "已批准" if approved else "已驳回"
+    body_lines = [
+        f"你的试剂采购申请{decision}。",
+        "",
+        *purchase_summary_lines(purchase),
+        "",
+        f"审批人：{purchase.approver or '-'}",
+        f"审批人邮箱：{purchase.approver_email or '-'}",
+        f"审批备注：{purchase.approval_notes or '-'}",
+    ]
+    base_url = get_app_base_url()
+    if base_url:
+        body_lines.extend(["", f"系统地址：{base_url}/"])
+    return send_mail(
+        subject=f"[试剂采购{decision}] {purchase.reagent_name}",
+        recipients=[purchase.requester_email],
+        body="\n".join(body_lines),
+    )
+
+
 # ---------- Pages ----------
 
 
@@ -722,6 +1006,300 @@ def delete_reagent(reagent_id):
         session.close()
 
 
+# ---------- Purchase Approval / Receiving API ----------
+
+
+@app.route("/api/purchases", methods=["GET"])
+def get_purchases():
+    session = SessionLocal()
+    try:
+        status = request.args.get("status")
+        search = request.args.get("search")
+
+        query = session.query(PurchaseRequest)
+        if status:
+            query = query.filter(PurchaseRequest.status == status)
+        if search:
+            term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    PurchaseRequest.reagent_name.ilike(term),
+                    PurchaseRequest.catalog_number.ilike(term),
+                    PurchaseRequest.brand.ilike(term),
+                    PurchaseRequest.requester.ilike(term),
+                    PurchaseRequest.requester_email.ilike(term),
+                )
+            )
+
+        rows = query.order_by(PurchaseRequest.updated_at.desc()).all()
+        return jsonify([serialize_purchase_request(row) for row in rows])
+    finally:
+        session.close()
+
+
+@app.route("/api/purchases/stats", methods=["GET"])
+def get_purchase_stats():
+    session = SessionLocal()
+    try:
+        rows = session.query(PurchaseRequest).all()
+        return jsonify(compute_procurement_stats(rows))
+    finally:
+        session.close()
+
+
+@app.route("/api/mail/config", methods=["GET"])
+def get_mail_config_status():
+    approvers = get_approver_emails()
+    return jsonify(
+        {
+            "smtp_configured": mail_is_configured(),
+            "approver_configured": bool(approvers),
+            "approver_count": len(approvers),
+        }
+    )
+
+
+@app.route("/api/purchases", methods=["POST"])
+def add_purchase_request():
+    data = request.json or {}
+    reagent_name = str(data.get("reagent_name") or data.get("name") or "").strip()
+    requester = str(data.get("requester") or "").strip()
+    requester_email = str(data.get("requester_email") or "").strip()
+    if not reagent_name:
+        return jsonify({"error": "请填写试剂名称"}), 400
+    if not requester:
+        return jsonify({"error": "请填写申请人"}), 400
+    if not requester_email:
+        return jsonify({"error": "请填写申请人邮箱"}), 400
+    if not is_valid_email(requester_email):
+        return jsonify({"error": "申请人邮箱格式不正确"}), 400
+
+    try:
+        quantity = float(data.get("quantity") or 1)
+    except (TypeError, ValueError):
+        return jsonify({"error": "数量格式不正确"}), 400
+    if quantity <= 0:
+        return jsonify({"error": "数量必须大于 0"}), 400
+
+    normalized = normalize_reagent_payload({**data, "name": reagent_name})
+    request_id = str(uuid.uuid4())[:8]
+    session = SessionLocal()
+    try:
+        purchase = PurchaseRequest(
+            id=request_id,
+            reagent_name=reagent_name,
+            name_en=data.get("name_en"),
+            cas_number=data.get("cas_number"),
+            catalog_number=data.get("catalog_number"),
+            brand=data.get("brand"),
+            specification=data.get("specification"),
+            purity=data.get("purity"),
+            unit=data.get("unit", "瓶"),
+            quantity=quantity,
+            low_stock_threshold=data.get("low_stock_threshold", 1),
+            category=normalized.get("category", "常用试剂"),
+            storage_temp=normalized.get("storage_temp"),
+            hazard_level=data.get("hazard_level", "普通"),
+            supplier=data.get("supplier"),
+            expected_price=data.get("expected_price"),
+            requester=requester,
+            requester_email=requester_email,
+            reason=data.get("reason"),
+            needed_by=data.get("needed_by"),
+            status="待审批",
+            created_at=now_text(),
+            updated_at=now_text(),
+        )
+        session.add(purchase)
+        session.commit()
+
+        mail_result = notify_purchase_approvers(purchase)
+        if mail_result.get("sent"):
+            purchase.approver_notified_at = now_text()
+            purchase.approver_email_error = None
+        else:
+            purchase.approver_email_error = mail_result.get("error") or "审批邮件发送失败"
+        purchase.updated_at = now_text()
+        session.commit()
+        return jsonify({"success": True, "id": request_id, "approval_email": mail_result})
+    finally:
+        session.close()
+
+
+@app.route("/api/purchases/<request_id>/approve", methods=["POST"])
+def approve_purchase_request(request_id):
+    data = request.json or {}
+    approver = str(data.get("approver") or "").strip()
+    approver_email = str(data.get("approver_email") or "").strip()
+    if not approver:
+        return jsonify({"error": "请填写审批人"}), 400
+    if approver_email and not is_valid_email(approver_email):
+        return jsonify({"error": "审批人邮箱格式不正确"}), 400
+
+    session = SessionLocal()
+    try:
+        purchase = session.get(PurchaseRequest, request_id)
+        if not purchase:
+            return jsonify({"error": "采购申请不存在"}), 404
+        if purchase.status != "待审批":
+            return jsonify({"error": "只有待审批申请可以审批"}), 400
+
+        purchase.status = "已批准"
+        purchase.approver = approver
+        purchase.approver_email = approver_email or purchase.approver_email
+        purchase.approval_notes = data.get("approval_notes")
+        purchase.approved_at = now_text()
+        purchase.updated_at = now_text()
+        session.commit()
+
+        mail_result = notify_purchase_requester(purchase, approved=True)
+        if mail_result.get("sent"):
+            purchase.requester_notified_at = now_text()
+            purchase.requester_email_error = None
+        else:
+            purchase.requester_email_error = mail_result.get("error") or "申请人通知邮件发送失败"
+        purchase.updated_at = now_text()
+        session.commit()
+        return jsonify({"success": True, "requester_email": mail_result})
+    finally:
+        session.close()
+
+
+@app.route("/api/purchases/<request_id>/reject", methods=["POST"])
+def reject_purchase_request(request_id):
+    data = request.json or {}
+    approver = str(data.get("approver") or "").strip()
+    approver_email = str(data.get("approver_email") or "").strip()
+    if not approver:
+        return jsonify({"error": "请填写审批人"}), 400
+    if approver_email and not is_valid_email(approver_email):
+        return jsonify({"error": "审批人邮箱格式不正确"}), 400
+
+    session = SessionLocal()
+    try:
+        purchase = session.get(PurchaseRequest, request_id)
+        if not purchase:
+            return jsonify({"error": "采购申请不存在"}), 404
+        if purchase.status != "待审批":
+            return jsonify({"error": "只有待审批申请可以驳回"}), 400
+
+        purchase.status = "已驳回"
+        purchase.approver = approver
+        purchase.approver_email = approver_email or purchase.approver_email
+        purchase.approval_notes = data.get("approval_notes")
+        purchase.approved_at = now_text()
+        purchase.updated_at = now_text()
+        session.commit()
+
+        mail_result = notify_purchase_requester(purchase, approved=False)
+        if mail_result.get("sent"):
+            purchase.requester_notified_at = now_text()
+            purchase.requester_email_error = None
+        else:
+            purchase.requester_email_error = mail_result.get("error") or "申请人通知邮件发送失败"
+        purchase.updated_at = now_text()
+        session.commit()
+        return jsonify({"success": True, "requester_email": mail_result})
+    finally:
+        session.close()
+
+
+@app.route("/api/purchases/<request_id>/receive", methods=["POST"])
+def receive_purchase_request(request_id):
+    data = request.json or {}
+    receiver = str(data.get("receiver") or "").strip()
+    if not receiver:
+        return jsonify({"error": "请填写验货人"}), 400
+
+    try:
+        received_quantity = float(data.get("received_quantity") or 0)
+        accepted_quantity = float(data.get("accepted_quantity") or received_quantity)
+    except (TypeError, ValueError):
+        return jsonify({"error": "验货数量格式不正确"}), 400
+    if received_quantity <= 0 or accepted_quantity < 0:
+        return jsonify({"error": "验货数量不正确"}), 400
+    if accepted_quantity > received_quantity:
+        return jsonify({"error": "合格数量不能超过到货数量"}), 400
+
+    session = SessionLocal()
+    try:
+        purchase = session.get(PurchaseRequest, request_id)
+        if not purchase:
+            return jsonify({"error": "采购申请不存在"}), 404
+        if purchase.status != "已批准":
+            return jsonify({"error": "只有已批准申请可以验货"}), 400
+
+        purchase.status = "待入库"
+        purchase.receiver = receiver
+        purchase.received_quantity = received_quantity
+        purchase.accepted_quantity = accepted_quantity
+        purchase.storage_location = data.get("storage_location") or purchase.storage_location
+        purchase.inspection_notes = data.get("inspection_notes")
+        purchase.received_at = now_text()
+        purchase.updated_at = now_text()
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
+
+@app.route("/api/purchases/<request_id>/stock-in", methods=["POST"])
+def stock_in_purchase_request(request_id):
+    data = request.json or {}
+    operator = str(data.get("operator") or "").strip()
+    if not operator:
+        return jsonify({"error": "请填写入库人"}), 400
+
+    session = SessionLocal()
+    try:
+        purchase = session.get(PurchaseRequest, request_id)
+        if not purchase:
+            return jsonify({"error": "采购申请不存在"}), 404
+        if purchase.status != "待入库":
+            return jsonify({"error": "只有待入库申请可以入库"}), 400
+
+        accepted_quantity = float(purchase.accepted_quantity or 0)
+        if accepted_quantity <= 0:
+            return jsonify({"error": "合格数量为 0，不能入库"}), 400
+
+        purchase.storage_location = data.get("storage_location") or purchase.storage_location
+        purchase.storage_temp = data.get("storage_temp") or purchase.storage_temp
+        target_reagent_id = data.get("reagent_id") or purchase.reagent_id
+        reagent = session.get(Reagent, target_reagent_id) if target_reagent_id else None
+        if reagent:
+            reagent.quantity = round((reagent.quantity or 0) + accepted_quantity, 6)
+            reagent.storage_location = purchase.storage_location or reagent.storage_location
+            reagent.storage_temp = purchase.storage_temp or reagent.storage_temp
+            reagent.updated_at = now_text()
+        else:
+            reagent = build_reagent_from_purchase(purchase, accepted_quantity)
+            session.add(reagent)
+
+        purchase.reagent_id = reagent.id
+        purchase.status = "已入库"
+        purchase.stocked_at = now_text()
+        purchase.updated_at = now_text()
+        session.add(
+            UsageRecord(
+                id=str(uuid.uuid4())[:8],
+                reagent_id=reagent.id,
+                user_name=operator,
+                action="采购入库",
+                quantity=accepted_quantity,
+                usage_unit=purchase.unit or reagent.unit,
+                converted_quantity=accepted_quantity,
+                converted_unit=reagent.unit,
+                purpose="采购验货入库",
+                notes=f"采购申请 {purchase.id}: {data.get('notes') or purchase.inspection_notes or ''}".strip(),
+                created_at=now_text(),
+            )
+        )
+        session.commit()
+        return jsonify({"success": True, "reagent_id": reagent.id, "new_quantity": reagent.quantity})
+    finally:
+        session.close()
+
+
 # ---------- Usage Record API ----------
 
 
@@ -816,6 +1394,8 @@ def get_stats():
     try:
         reagents = [model_to_dict(row) for row in session.query(Reagent).order_by(Reagent.updated_at.desc()).all()]
         stats = compute_inventory_stats(reagents)
+        purchases = session.query(PurchaseRequest).all()
+        stats["procurement"] = compute_procurement_stats(purchases)
         recent_usage_rows = (
             session.query(UsageRecord, Reagent.name, Reagent.unit)
             .join(Reagent, UsageRecord.reagent_id == Reagent.id)
