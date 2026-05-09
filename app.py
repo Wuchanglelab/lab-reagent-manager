@@ -33,8 +33,8 @@ DEFAULT_DATA_DIR = "/tmp/lab-reagent-manager" if os.environ.get("VERCEL") else B
 DATA_DIR = os.environ.get("DATA_DIR", DEFAULT_DATA_DIR)
 LOCAL_UPLOAD_FOLDER = os.path.join(DATA_DIR, "uploads")
 LOCAL_DATABASE = os.path.join(DATA_DIR, "lab_reagents.db")
-DEFAULT_TEAMPLUS_API_KEY = ""
-DEFAULT_ANTHROPIC_BASE_URL = "https://codex.0u0o.com"
+DEFAULT_OPENAI_BASE_URL = "https://codex.0u0o.com"
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
 DEFAULT_CATEGORY_NAMES = ["常用试剂", "危险试剂", "-20°C冰箱", "-80°C冰箱", "实验耗材", "生物样品"]
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 STORAGE_SHORTCUT_CATEGORY_MAP = {
@@ -196,15 +196,29 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 
 
 def get_ai_client_config():
-    return (
-        os.environ.get("ANTHROPIC_BASE_URL")
+    api_base = (
+        os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("DEEPSEEK_BASE_URL")
+        or os.environ.get("ANTHROPIC_BASE_URL")
         or os.environ.get("BASE_URL")
-        or DEFAULT_ANTHROPIC_BASE_URL,
-        os.environ.get("ANTHROPIC_AUTH_TOKEN")
-        or os.environ.get("TEAMPLUS_API_KEY")
-        or DEFAULT_TEAMPLUS_API_KEY,
-        os.environ.get("ANTHROPIC_MODEL") or os.environ.get("MODEL", "gpt-5.4"),
+        or DEFAULT_OPENAI_BASE_URL
     )
+    api_key = (
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("DEEPSEEK_API_KEY")
+        or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("TEAMPLUS_API_KEY")
+        or ""
+    )
+    model = (
+        os.environ.get("OPENAI_MODEL")
+        or os.environ.get("DEEPSEEK_MODEL")
+        or os.environ.get("ANTHROPIC_MODEL")
+        or os.environ.get("MODEL")
+        or DEFAULT_OPENAI_MODEL
+    )
+    return api_base, api_key, model
 
 
 def parse_model_json_content(resp_data):
@@ -373,7 +387,7 @@ init_db()
 def post_chat_completion(payload, timeout=120, max_retries=3):
     api_base, api_key, _ = get_ai_client_config()
     if not api_key:
-        raise RuntimeError("未配置 ANTHROPIC_AUTH_TOKEN")
+        raise RuntimeError("未配置 OPENAI_API_KEY（也兼容 ANTHROPIC_AUTH_TOKEN / DEEPSEEK_API_KEY）")
     last_error = None
     for attempt in range(max_retries):
         try:
@@ -386,6 +400,7 @@ def post_chat_completion(payload, timeout=120, max_retries=3):
                 json=payload,
                 timeout=timeout,
             )
+            response.encoding = "utf-8"
             response.raise_for_status()
             return response.json()
         except Exception as exc:
@@ -815,6 +830,22 @@ def uploaded_file(filename):
     if use_blob_storage():
         return jsonify({"error": "Vercel Blob 文件不通过本地路径访问"}), 404
     return send_from_directory(LOCAL_UPLOAD_FOLDER, filename)
+
+
+# ---------- Runtime Config API ----------
+
+
+@app.route("/api/ai/config", methods=["GET"])
+def get_ai_config_status():
+    api_base, api_key, model = get_ai_client_config()
+    return jsonify(
+        {
+            "base_url": api_base,
+            "model": model,
+            "api_key_configured": bool(api_key),
+            "chat_completions_url": chat_completions_url(api_base),
+        }
+    )
 
 
 # ---------- Category API ----------
