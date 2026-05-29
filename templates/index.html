@@ -811,7 +811,7 @@
                             <div class="relative w-full lg:w-96">
                                 <input v-model="searchQuery" @input="debounceSearch"
                                        class="w-full rounded-2xl border border-slate-200 bg-white/90 pl-11 pr-4 py-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                                       placeholder="搜索试剂名称、CAS号、货号...">
+                                       placeholder="搜索试剂名称、CAS号、货号、归属人...">
                                 <svg class="w-4 h-4 text-slate-400 absolute left-4 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                                 </svg>
@@ -1090,6 +1090,7 @@
                                         <th class="text-left px-5 py-4 font-semibold">规格</th>
                                         <th class="text-left px-5 py-4 font-semibold">库存</th>
                                         <th class="text-left px-5 py-4 font-semibold">存储位置</th>
+                                        <th class="text-left px-5 py-4 font-semibold">归属人</th>
                                         <th class="text-left px-5 py-4 font-semibold">危险等级</th>
                                         <th class="text-left px-5 py-4 font-semibold">有效期</th>
                                         <th class="text-center px-5 py-4 font-semibold">操作</th>
@@ -1113,6 +1114,7 @@
                                             </span>
                                         </td>
                                         <td class="px-5 py-4 text-slate-600">{{r.storage_location || '-'}}</td>
+                                        <td class="px-5 py-4 text-slate-600">{{r.owner || '-'}}</td>
                                         <td class="px-5 py-4">
                                             <span class="badge" :class="hazardClass(r.hazard_level)">{{r.hazard_level}}</span>
                                         </td>
@@ -1128,7 +1130,7 @@
                                         </td>
                                     </tr>
                                     <tr v-if="filteredReagents.length === 0">
-                                        <td colspan="9" class="px-6 py-16">
+                                        <td colspan="10" class="px-6 py-16">
                                             <div class="mx-auto max-w-md text-center">
                                                 <div class="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-slate-100 text-2xl">🧪</div>
                                                 <div class="mt-4 text-lg font-semibold text-slate-700">当前没有匹配的试剂记录</div>
@@ -1304,6 +1306,13 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">供应商</label>
                         <input v-model="form.supplier" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="供应商名称">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">归属人</label>
+                        <input v-model.trim="form.owner" list="owner-options" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名 / 课题组">
+                        <datalist id="owner-options">
+                            <option v-for="owner in ownerOptions" :key="owner" :value="owner"></option>
+                        </datalist>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">规格</label>
@@ -1702,6 +1711,7 @@ createApp({
             currentView: 'dashboard',
             categories: [],
             storageLocations: [],
+            ownerOptions: [],
             reagents: [],
             usageRecords: [],
             purchases: [],
@@ -1925,7 +1935,7 @@ createApp({
     },
     methods: {
         emptyForm() {
-            return { name: '', name_en: '', cas_number: '', catalog_number: '', brand: '', specification: '', purity: '', unit: '瓶', quantity: 1, low_stock_threshold: 1, category: '常用试剂', storage_location: '', storage_temp: '', hazard_level: '普通', hazard_info: '', expiry_date: '', supplier: '', price: null, notes: '', image_path: '' };
+            return { name: '', name_en: '', cas_number: '', catalog_number: '', brand: '', specification: '', purity: '', unit: '瓶', quantity: 1, low_stock_threshold: 1, category: '常用试剂', storage_location: '', owner: '', storage_temp: '', hazard_level: '普通', hazard_info: '', expiry_date: '', supplier: '', price: null, notes: '', image_path: '' };
         },
         emptyUseForm() {
             return {
@@ -2150,6 +2160,10 @@ createApp({
         async loadStorageLocations() {
             const res = await fetch('/api/storage-locations');
             this.storageLocations = await res.json();
+        },
+        async loadOwnerOptions() {
+            const res = await fetch('/api/owners');
+            this.ownerOptions = await res.json();
         },
         async loadReagents() {
             let url = '/api/reagents?';
@@ -2470,6 +2484,7 @@ createApp({
             this.loadReagents();
             this.loadStats();
             this.loadStorageLocations();
+            this.loadOwnerOptions();
         },
         async saveReagent() {
             if (!this.form.name) return;
@@ -2482,6 +2497,7 @@ createApp({
             this.loadReagents();
             this.loadStats();
             this.loadStorageLocations();
+            this.loadOwnerOptions();
         },
         async submitUsage() {
             if (!this.useForm.user_name || !this.useForm.quantity || !this.useForm.usage_unit) return;
@@ -2780,6 +2796,7 @@ createApp({
             this.loadReagents();
             this.loadStats();
             this.loadStorageLocations();
+            this.loadOwnerOptions();
             this.showToast(`批量导入完成：成功 ${this.scanImportedCount} / ${this.scanItems.length}`);
         },
         scanItemStatusLabel(item) {
@@ -2867,6 +2884,7 @@ createApp({
         this.lastInspectionConfirmedAt = localStorage.getItem('lab_inspection_confirmed_at');
         this.loadCategories();
         this.loadStorageLocations();
+        this.loadOwnerOptions();
         this.loadReagents();
         this.loadStats();
         this.loadPurchaseStats();

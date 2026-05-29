@@ -81,6 +81,7 @@ class Reagent(Base):
     low_stock_threshold = Column(Float, default=1)
     category = Column(String, nullable=False, default="常用试剂")
     storage_location = Column(String)
+    owner = Column(String)
     storage_temp = Column(String)
     hazard_level = Column(String, default="普通")
     hazard_info = Column(String)
@@ -346,6 +347,7 @@ def init_db():
 
     if USING_SQLITE:
         ensure_column("reagents", "low_stock_threshold", "REAL DEFAULT 1")
+        ensure_column("reagents", "owner", "TEXT")
         ensure_column("usage_records", "usage_unit", "TEXT")
         ensure_column("usage_records", "converted_quantity", "REAL")
         ensure_column("usage_records", "converted_unit", "TEXT")
@@ -357,6 +359,7 @@ def init_db():
         ensure_column("purchase_requests", "requester_email_error", "TEXT")
     else:
         ensure_column("reagents", "low_stock_threshold", "DOUBLE PRECISION DEFAULT 1")
+        ensure_column("reagents", "owner", "TEXT")
         ensure_column("usage_records", "usage_unit", "TEXT")
         ensure_column("usage_records", "converted_quantity", "DOUBLE PRECISION")
         ensure_column("usage_records", "converted_unit", "TEXT")
@@ -741,6 +744,7 @@ def build_reagent_from_purchase(purchase, quantity):
         low_stock_threshold=purchase.low_stock_threshold if purchase.low_stock_threshold is not None else 1,
         category=purchase.category or "常用试剂",
         storage_location=purchase.storage_location,
+        owner=purchase.requester,
         storage_temp=purchase.storage_temp,
         hazard_level=purchase.hazard_level or "普通",
         supplier=purchase.supplier,
@@ -987,6 +991,7 @@ def get_reagents():
                     Reagent.name_en.ilike(term),
                     Reagent.cas_number.ilike(term),
                     Reagent.catalog_number.ilike(term),
+                    Reagent.owner.ilike(term),
                 )
             )
         if hazard:
@@ -1015,6 +1020,23 @@ def get_storage_locations():
         session.close()
 
 
+@app.route("/api/owners", methods=["GET"])
+def get_owners():
+    session = SessionLocal()
+    try:
+        rows = (
+            session.query(Reagent.owner)
+            .filter(Reagent.owner.isnot(None))
+            .filter(func.trim(Reagent.owner) != "")
+            .distinct()
+            .all()
+        )
+        owners = sorted({value for (value,) in rows if value and value.strip()}, key=lambda item: item.lower())
+        return jsonify(owners)
+    finally:
+        session.close()
+
+
 @app.route("/api/reagents", methods=["POST"])
 def add_reagent():
     data = normalize_reagent_payload(request.json or {})
@@ -1035,6 +1057,7 @@ def add_reagent():
             low_stock_threshold=data.get("low_stock_threshold", 1),
             category=data.get("category", "常用试剂"),
             storage_location=data.get("storage_location"),
+            owner=data.get("owner"),
             storage_temp=data.get("storage_temp"),
             hazard_level=data.get("hazard_level", "普通"),
             hazard_info=data.get("hazard_info"),
@@ -1087,6 +1110,7 @@ def update_reagent(reagent_id):
             "low_stock_threshold",
             "category",
             "storage_location",
+            "owner",
             "storage_temp",
             "hazard_level",
             "hazard_info",
@@ -1383,6 +1407,7 @@ def stock_in_purchase_request(request_id):
         if reagent:
             reagent.quantity = round((reagent.quantity or 0) + accepted_quantity, 6)
             reagent.storage_location = purchase.storage_location or reagent.storage_location
+            reagent.owner = reagent.owner or purchase.requester
             reagent.storage_temp = purchase.storage_temp or reagent.storage_temp
             reagent.updated_at = now_text()
         else:
