@@ -1209,7 +1209,7 @@
                                             <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'approve')" class="rounded-xl bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">批准</button>
                                             <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'reject')" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">驳回</button>
                                             <button v-if="item.status === '已批准'" @click="openReceiveModal(item)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">验货</button>
-                                            <button v-if="item.status === '待入库'" @click="stockInPurchase(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
+                                            <button v-if="item.status === '待入库'" @click="openStockInModal(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
                                             <button v-if="item.reagent_id" @click="openReagentView('all'); searchQuery=item.reagent_name; loadReagents()" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">看库存</button>
                                         </div>
                                     </div>
@@ -1567,6 +1567,38 @@
         </div>
     </div>
 
+    <!-- Stock In Modal -->
+    <div v-if="showStockInModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showStockInModal=false">
+        <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100">
+                <h3 class="text-lg font-bold text-gray-800">采购入库确认</h3>
+                <p class="mt-1 text-sm text-slate-500">{{stockInForm.reagent_name}}，合格数量 {{formatNumber(stockInForm.accepted_quantity)}} {{stockInForm.unit}}</p>
+            </div>
+            <div class="p-6 space-y-4 bg-slate-50/55">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">入库人 *</label>
+                    <input v-model.trim="stockInForm.operator" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">入库位置</label>
+                    <input v-model="stockInForm.storage_location" list="storage-location-options" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：A区-2号柜-3层">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">存储温度</label>
+                    <input v-model="stockInForm.storage_temp" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="室温 / 2-8°C / -20°C">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">归属人</label>
+                    <input v-model.trim="stockInForm.owner" list="owner-options" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名 / 课题组">
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button @click="showStockInModal=false" class="btn-secondary">取消</button>
+                <button @click="submitStockIn()" class="btn-primary" :disabled="!stockInForm.operator">确认入库</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Use/Restock Modal -->
     <div v-if="showUseModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showUseModal=false">
         <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
@@ -1727,12 +1759,14 @@ createApp({
             showPurchaseModal: false,
             showApprovalModal: false,
             showReceiveModal: false,
+            showStockInModal: false,
             editingReagent: null,
             form: this.emptyForm(),
             useForm: this.emptyUseForm(),
             purchaseForm: this.emptyPurchaseForm(),
             approvalForm: this.emptyApprovalForm(),
             receiveForm: this.emptyReceiveForm(),
+            stockInForm: this.emptyStockInForm(),
             scanItems: [],
             scanStatus: null,
             scanError: '',
@@ -2004,6 +2038,18 @@ createApp({
                 accepted_quantity: 1,
                 storage_location: '',
                 inspection_notes: '',
+            };
+        },
+        emptyStockInForm() {
+            return {
+                request_id: '',
+                reagent_name: '',
+                accepted_quantity: 0,
+                unit: '瓶',
+                operator: '',
+                storage_location: '',
+                storage_temp: '',
+                owner: '',
             };
         },
         formatNumber(value) {
@@ -2332,6 +2378,19 @@ createApp({
             };
             this.showReceiveModal = true;
         },
+        openStockInModal(item) {
+            this.stockInForm = {
+                ...this.emptyStockInForm(),
+                request_id: item.id,
+                reagent_name: item.reagent_name,
+                accepted_quantity: Number(item.accepted_quantity || item.quantity || 0),
+                unit: item.unit || '瓶',
+                storage_location: item.storage_location || '',
+                storage_temp: item.storage_temp || '',
+                owner: item.requester || '',
+            };
+            this.showStockInModal = true;
+        },
         matchesStorageShortcut(reagent, marker) {
             const category = String(reagent.category || '').trim();
             const storageTemp = String(reagent.storage_temp || '').trim();
@@ -2465,26 +2524,29 @@ createApp({
             this.openProcurementView('待入库');
             this.loadStats();
         },
-        async stockInPurchase(item) {
-            const operator = prompt('入库人姓名');
-            if (!operator) return;
-            const storage_location = item.storage_location || prompt('入库位置（可留空）') || '';
-            const res = await fetch(`/api/purchases/${item.id}/stock-in`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ operator, storage_location }),
-            });
-            const data = await res.json();
-            if (!res.ok || !data.success) {
-                this.showToast(data.error || '入库失败');
-                return;
+        async submitStockIn() {
+            if (!this.stockInForm.operator) return;
+            try {
+                const res = await fetch(`/api/purchases/${this.stockInForm.request_id}/stock-in`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.stockInForm),
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    this.showToast(data.error || '入库失败');
+                    return;
+                }
+                this.showStockInModal = false;
+                this.showToast(`入库成功，库存已更新`);
+                this.openProcurementView(this.procurementFilter || '');
+                this.loadReagents();
+                this.loadStats();
+                this.loadStorageLocations();
+                this.loadOwnerOptions();
+            } catch (e) {
+                this.showToast(e.message || '入库失败');
             }
-            this.showToast(`入库成功，库存已更新`);
-            this.loadPurchases();
-            this.loadReagents();
-            this.loadStats();
-            this.loadStorageLocations();
-            this.loadOwnerOptions();
         },
         async saveReagent() {
             if (!this.form.name) return;

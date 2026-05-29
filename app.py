@@ -1407,11 +1407,12 @@ def stock_in_purchase_request(request_id):
         if reagent:
             reagent.quantity = round((reagent.quantity or 0) + accepted_quantity, 6)
             reagent.storage_location = purchase.storage_location or reagent.storage_location
-            reagent.owner = reagent.owner or purchase.requester
+            reagent.owner = data.get("owner") or reagent.owner or purchase.requester
             reagent.storage_temp = purchase.storage_temp or reagent.storage_temp
             reagent.updated_at = now_text()
         else:
             reagent = build_reagent_from_purchase(purchase, accepted_quantity)
+            reagent.owner = data.get("owner") or reagent.owner
             session.add(reagent)
 
         purchase.reagent_id = reagent.id
