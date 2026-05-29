@@ -2237,6 +2237,19 @@ createApp({
                 this.mailConfig = { smtp_configured: false, approver_configured: false, approver_count: 0 };
             }
         },
+        async readApiResponse(res, fallbackMessage) {
+            const text = await res.text();
+            let data = {};
+            try {
+                data = text ? JSON.parse(text) : {};
+            } catch (e) {
+                throw new Error(`${fallbackMessage}：服务器返回了异常页面，请刷新后重试`);
+            }
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || fallbackMessage);
+            }
+            return data;
+        },
         async loadPurchases() {
             let url = '/api/purchases?';
             if (this.procurementFilter) url += `status=${encodeURIComponent(this.procurementFilter)}&`;
@@ -2532,11 +2545,7 @@ createApp({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(this.stockInForm),
                 });
-                const data = await res.json();
-                if (!res.ok || !data.success) {
-                    this.showToast(data.error || '入库失败');
-                    return;
-                }
+                await this.readApiResponse(res, '入库失败');
                 this.showStockInModal = false;
                 this.showToast(`入库成功，库存已更新`);
                 this.openProcurementView(this.procurementFilter || '');

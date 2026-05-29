@@ -1414,6 +1414,7 @@ def stock_in_purchase_request(request_id):
             reagent = build_reagent_from_purchase(purchase, accepted_quantity)
             reagent.owner = data.get("owner") or reagent.owner
             session.add(reagent)
+            session.flush()
 
         purchase.reagent_id = reagent.id
         purchase.status = "已入库"
@@ -1436,6 +1437,9 @@ def stock_in_purchase_request(request_id):
         )
         session.commit()
         return jsonify({"success": True, "reagent_id": reagent.id, "new_quantity": reagent.quantity})
+    except Exception as exc:
+        session.rollback()
+        return jsonify({"error": f"入库失败: {str(exc)}"}), 500
     finally:
         session.close()
 
