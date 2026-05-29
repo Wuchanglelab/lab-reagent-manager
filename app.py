@@ -44,6 +44,12 @@ STORAGE_SHORTCUT_CATEGORY_MAP = {
     "-80°C冰箱": "-80",
 }
 ADMIN_TOKEN_MESSAGE = "lab-reagent-manager-admin"
+EXPENSE_BUCKETS = [
+    {"key": "reagent", "label": "试剂"},
+    {"key": "consumable", "label": "耗材"},
+    {"key": "instrument", "label": "仪器"},
+    {"key": "proxy", "label": "代购"},
+]
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
 MAX_UPLOAD_MB = 12
@@ -630,6 +636,97 @@ def normalize_reagent_payload(payload):
     if marker and not storage_temp:
         data["storage_temp"] = f"{marker}°C"
     return data
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == "":
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def expense_bucket_for_item(item):
+    text = " ".join(
+        str(item.get(field) or "").lower()
+        for field in [
+            "category",
+            "name",
+            "reagent_name",
+            "name_en",
+            "brand",
+            "supplier",
+            "reason",
+            "notes",
+        ]
+    )
+    if "代购" in text or "proxy" in text:
+        return "proxy"
+    if any(keyword in text for keyword in ["仪器", "设备", "耗仪", "instrument", "equipment", "apparatus"]):
+        return "instrument"
+    if any(keyword in text for keyword in ["耗材", "枪头", "离心管", "培养皿", "手套", "tip", "tube", "plate", "dish", "consumable"]):
+        return "consumable"
+    return "reagent"
+
+
+def empty_expense_bucket(bucket):
+    return {
+        "key": bucket["key"],
+        "label": bucket["label"],
+        "amount": 0.0,
+        "inventory_amount": 0.0,
+        "procurement_amount": 0.0,
+        "count": 0,
+    }
+
+
+def compute_expense_stats(reagents, purchases):
+    buckets = {bucket["key"]: empty_expense_bucket(bucket) for bucket in EXPENSE_BUCKETS}
+    inventory_amount = 0.0
+    procurement_amount = 0.0
+
+    for reagent in reagents:
+        price = safe_float(reagent.get("price"))
+        if price <= 0:
+            continue
+        quantity = max(safe_float(reagent.get("quantity"), 1.0), 1.0)
+        amount = round(price * quantity, 2)
+        bucket = buckets[expense_bucket_for_item(reagent)]
+        bucket["amount"] += amount
+        bucket["inventory_amount"] += amount
+        bucket["count"] += 1
+        inventory_amount += amount
+
+    for purchase in purchases:
+        data = model_to_dict(purchase)
+        if data.get("status") in {"已入库", "已驳回"}:
+            continue
+        amount = safe_float(data.get("expected_price"))
+        if amount <= 0:
+            continue
+        bucket = buckets[expense_bucket_for_item(data)]
+        bucket["amount"] += amount
+        bucket["procurement_amount"] += amount
+        bucket["count"] += 1
+        procurement_amount += amount
+
+    bucket_rows = []
+    total_amount = round(inventory_amount + procurement_amount, 2)
+    for bucket in EXPENSE_BUCKETS:
+        row = buckets[bucket["key"]]
+        row["amount"] = round(row["amount"], 2)
+        row["inventory_amount"] = round(row["inventory_amount"], 2)
+        row["procurement_amount"] = round(row["procurement_amount"], 2)
+        row["share"] = round((row["amount"] / total_amount * 100), 1) if total_amount else 0
+        bucket_rows.append(row)
+
+    return {
+        "total_amount": total_amount,
+        "inventory_amount": round(inventory_amount, 2),
+        "procurement_amount": round(procurement_amount, 2),
+        "buckets": bucket_rows,
+    }
 
 
 def compute_inventory_stats(reagents):
@@ -1611,6 +1708,7 @@ def get_stats():
         stats = compute_inventory_stats(reagents)
         purchases = session.query(PurchaseRequest).all()
         stats["procurement"] = compute_procurement_stats(purchases)
+        stats["expense_stats"] = compute_expense_stats(reagents, purchases)
         recent_usage_rows = (
             session.query(UsageRecord, Reagent.name, Reagent.unit)
             .join(Reagent, UsageRecord.reagent_id == Reagent.id)

@@ -960,6 +960,44 @@
                     </section>
 
                     <section class="section-card p-6">
+                        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                                <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Expense Overview</div>
+                                <h3 class="mt-2 text-xl font-bold text-slate-900">金额消费统计</h3>
+                                <p class="mt-1 text-sm text-slate-500">按试剂、耗材、仪器和代购汇总库存价值与待处理采购预算。</p>
+                            </div>
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                                <div class="text-xs text-slate-500">总金额</div>
+                                <div class="mt-1 text-2xl font-bold text-slate-900">{{formatCurrency(expenseStats.total_amount)}}</div>
+                            </div>
+                        </div>
+                        <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            <div v-for="bucket in expenseStats.buckets" :key="bucket.key" class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div class="text-sm font-semibold text-slate-900">{{bucket.label}}</div>
+                                        <div class="mt-2 text-2xl font-bold text-slate-900">{{formatCurrency(bucket.amount)}}</div>
+                                    </div>
+                                    <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="expenseBucketClass(bucket.key)">
+                                        {{bucket.share || 0}}%
+                                    </span>
+                                </div>
+                                <div class="mt-4 h-2 rounded-full bg-slate-200">
+                                    <div class="h-2 rounded-full bg-slate-900" :style="{width: Math.min(100, bucket.share || 0) + '%'}"></div>
+                                </div>
+                                <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                                    <div>库存 {{formatCurrency(bucket.inventory_amount)}}</div>
+                                    <div>采购 {{formatCurrency(bucket.procurement_amount)}}</div>
+                                </div>
+                                <div class="mt-2 text-xs text-slate-400">{{bucket.count || 0}} 条有金额记录</div>
+                            </div>
+                        </div>
+                        <div v-if="!expenseStats.total_amount" class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-400">
+                            暂无金额数据。录入试剂价格或采购预算后，这里会自动汇总。
+                        </div>
+                    </section>
+
+                    <section class="section-card p-6">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div>
                                 <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Procurement Workflow</div>
@@ -1866,6 +1904,27 @@ createApp({
                 items: this.purchases.filter(item => item.status === status),
             }));
         },
+        expenseStats() {
+            const fallbackBuckets = [
+                { key: 'reagent', label: '试剂' },
+                { key: 'consumable', label: '耗材' },
+                { key: 'instrument', label: '仪器' },
+                { key: 'proxy', label: '代购' },
+            ].map(bucket => ({
+                ...bucket,
+                amount: 0,
+                inventory_amount: 0,
+                procurement_amount: 0,
+                count: 0,
+                share: 0,
+            }));
+            return this.stats.expense_stats || {
+                total_amount: 0,
+                inventory_amount: 0,
+                procurement_amount: 0,
+                buckets: fallbackBuckets,
+            };
+        },
         scanBusy() {
             return ['compressing', 'uploading', 'recognizing'].includes(this.scanStatus);
         },
@@ -2098,6 +2157,20 @@ createApp({
             const num = Number(value);
             if (!Number.isFinite(num)) return value || '';
             return Number(num.toFixed(6)).toString();
+        },
+        formatCurrency(value) {
+            const num = Number(value || 0);
+            if (!Number.isFinite(num)) return '¥0';
+            return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+        },
+        expenseBucketClass(key) {
+            const map = {
+                reagent: 'bg-sky-100 text-sky-700',
+                consumable: 'bg-emerald-100 text-emerald-700',
+                instrument: 'bg-violet-100 text-violet-700',
+                proxy: 'bg-amber-100 text-amber-700',
+            };
+            return map[key] || 'bg-slate-100 text-slate-600';
         },
         formatRemainingAmount(quantity, stockUnit, specification) {
             const qty = Number(quantity || 0);
