@@ -43,7 +43,10 @@ STORAGE_SHORTCUT_CATEGORY_MAP = {
 }
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
-MAX_UPLOAD_MB = 1
+MAX_UPLOAD_MB = 12
+STORED_IMAGE_MAX_BYTES = 950 * 1024
+STORED_IMAGE_MAX_DIMENSIONS = [1800, 1600, 1400, 1200, 1000, 850, 700]
+STORED_IMAGE_JPEG_QUALITIES = [88, 82, 76, 70, 64, 58, 52, 46]
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
@@ -493,21 +496,58 @@ def read_uploaded_image_file(file_storage):
     ext = file_storage.filename.rsplit(".", 1)[1].lower()
     content_type = file_storage.mimetype or media_type_from_name(file_storage.filename)
 
-    if ext in NON_STANDARD_IMAGE_EXTENSIONS:
-        from PIL import Image
-
-        image = Image.open(file_storage.stream)
-        if image.mode in ("RGBA", "LA", "P"):
-            image = image.convert("RGBA")
-        else:
-            image = image.convert("RGB")
-        output = io.BytesIO()
-        image.save(output, "PNG")
-        body = output.getvalue()
-        return body, "image/png", f"{uuid.uuid4().hex[:12]}.png"
-
     body = file_storage.read()
-    return body, content_type, f"{uuid.uuid4().hex[:12]}.{ext}"
+    if ext == "svg":
+        if len(body) > STORED_IMAGE_MAX_BYTES:
+            raise ValueError("SVG 文件超过 1MB，请改用 JPG/PNG 照片")
+        return body, content_type, f"{uuid.uuid4().hex[:12]}.{ext}"
+
+    if len(body) <= STORED_IMAGE_MAX_BYTES and ext not in NON_STANDARD_IMAGE_EXTENSIONS:
+        return body, content_type, f"{uuid.uuid4().hex[:12]}.{ext}"
+
+    compressed = compress_image_bytes(body, file_storage.filename)
+    return compressed, "image/jpeg", f"{uuid.uuid4().hex[:12]}.jpg"
+
+
+def image_to_rgb(image):
+    from PIL import Image
+
+    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+        rgba = image.convert("RGBA")
+        background = Image.new("RGB", rgba.size, "white")
+        background.paste(rgba, mask=rgba.getchannel("A"))
+        return background
+    if image.mode != "RGB":
+        return image.convert("RGB")
+    return image
+
+
+def compress_image_bytes(body, filename):
+    from PIL import Image, ImageOps
+
+    try:
+        image = Image.open(io.BytesIO(body))
+        image = ImageOps.exif_transpose(image)
+    except Exception as exc:
+        raise ValueError("图片超过 1MB，且无法自动压缩，请换一张 JPG/PNG 照片") from exc
+
+    best_body = None
+    for max_dimension in STORED_IMAGE_MAX_DIMENSIONS:
+        working = image.copy()
+        working.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+        working = image_to_rgb(working)
+        for quality in STORED_IMAGE_JPEG_QUALITIES:
+            output = io.BytesIO()
+            working.save(output, "JPEG", quality=quality, optimize=True, progressive=True)
+            candidate = output.getvalue()
+            if best_body is None or len(candidate) < len(best_body):
+                best_body = candidate
+            if len(candidate) <= STORED_IMAGE_MAX_BYTES:
+                return candidate
+
+    if best_body and len(best_body) < len(body):
+        return best_body
+    raise ValueError(f"图片超过 1MB，自动压缩失败：{secure_filename(filename) or 'image'}")
 
 
 def media_type_from_name(name, content_type=None):

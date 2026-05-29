@@ -1627,14 +1627,15 @@
                     <div v-if="scanItems.length === 0">
                         <div class="text-4xl mb-3">📸</div>
                         <p class="text-gray-600 text-sm">点击拍照或选择图片，支持批量导入</p>
-                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，单张最大 1MB</p>
+                        <p class="text-gray-400 text-xs mt-1">最多同时 5 张，支持 JPG / PNG / WebP / AVIF / GIF / HEIC 等，上传前自动压缩到 1MB 内</p>
                     </div>
                     <div v-else>
                         <div class="mb-3 text-left text-sm font-medium text-slate-700">已选择 {{scanItems.length}} 张图片</div>
                         <div class="grid grid-cols-2 gap-3">
                             <div v-for="item in scanItems" :key="item.id" class="rounded-2xl border border-slate-200 bg-white p-3 text-left">
                                 <img :src="item.preview" class="h-24 w-full rounded-lg object-cover shadow-sm">
-                                <div class="mt-2 truncate text-xs font-medium text-slate-700">{{item.file.name}}</div>
+                                <div class="mt-2 truncate text-xs font-medium text-slate-700">{{item.originalName || item.file.name}}</div>
+                                <div class="mt-1 text-[11px] text-slate-400">{{scanItemSizeLabel(item)}}</div>
                                 <div class="mt-1 text-[11px]"
                                      :class="item.status === 'error' ? 'text-red-500' : item.status === 'imported' || item.status === 'done' ? 'text-green-600' : 'text-slate-500'">
                                     {{scanItemStatusLabel(item)}}
@@ -1646,6 +1647,7 @@
                 </div>
 
                 <div v-if="scanStatus" class="text-center py-3">
+                    <div v-if="scanStatus === 'compressing'" class="text-blue-600 text-sm">⏳ 正在压缩图片（{{scanProgressText}}）...</div>
                     <div v-if="scanStatus === 'uploading'" class="text-blue-600 text-sm">⏳ 正在上传图片（{{scanProgressText}}）...</div>
                     <div v-if="scanStatus === 'recognizing'" class="text-blue-600 text-sm">🤖 AI正在识别图片（{{scanProgressText}}）...</div>
                     <div v-if="scanStatus === 'done' && scanItems.length === 1" class="text-green-600 text-sm">✅ 识别完成！信息已填充到表单</div>
@@ -1734,7 +1736,10 @@ createApp({
             quickFilter: '',
             scanCurrentIndex: 0,
             scanImportedCount: 0,
-            uploadMaxBytes: 1 * 1024 * 1024,
+            scanBatchTotal: 0,
+            uploadMaxBytes: 950 * 1024,
+            uploadServerMaxBytes: 12 * 1024 * 1024,
+            imageMaxDimension: 1800,
         };
     },
     computed: {
@@ -1779,10 +1784,13 @@ createApp({
             }));
         },
         scanBusy() {
-            return this.scanStatus === 'uploading' || this.scanStatus === 'recognizing';
+            return ['compressing', 'uploading', 'recognizing'].includes(this.scanStatus);
         },
         scanProgressText() {
-            return `${Math.min(this.scanCurrentIndex + 1, Math.max(this.scanItems.length, 1))}/${Math.max(this.scanItems.length, 1)}`;
+            const total = this.scanStatus === 'compressing'
+                ? Math.max(this.scanBatchTotal || 0, 1)
+                : Math.max(this.scanItems.length, 1);
+            return `${Math.min(this.scanCurrentIndex + 1, total)}/${total}`;
         },
         webApprovalMode() {
             return !this.mailConfig.smtp_configured || !this.mailConfig.approver_configured;
@@ -2509,41 +2517,163 @@ createApp({
             const files = Array.from(e.dataTransfer.files || []);
             if (files.length) this.addScanFiles(files);
         },
+        formatFileSize(bytes) {
+            if (!bytes) return '0 KB';
+            if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+            return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+        },
+        loadImageElement(file) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                const objectUrl = URL.createObjectURL(file);
+                image.onload = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    resolve(image);
+                };
+                image.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    reject(new Error('图片无法在浏览器中压缩'));
+                };
+                image.src = objectUrl;
+            });
+        },
+        canvasToBlob(canvas, type, quality) {
+            return new Promise((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('图片压缩失败'));
+                }, type, quality);
+            });
+        },
+        async compressImageFile(file) {
+            const image = await this.loadImageElement(file);
+            const dimensions = [this.imageMaxDimension, 1600, 1400, 1200, 1000, 850, 700];
+            const qualities = [0.88, 0.82, 0.76, 0.7, 0.64, 0.58, 0.52, 0.46];
+            let bestBlob = null;
+
+            for (const maxDimension of dimensions) {
+                const scale = Math.min(1, maxDimension / image.naturalWidth, maxDimension / image.naturalHeight);
+                const width = Math.max(1, Math.round(image.naturalWidth * scale));
+                const height = Math.max(1, Math.round(image.naturalHeight * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const context = canvas.getContext('2d', { alpha: false });
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, width, height);
+                context.drawImage(image, 0, 0, width, height);
+
+                for (const quality of qualities) {
+                    const blob = await this.canvasToBlob(canvas, 'image/jpeg', quality);
+                    if (!bestBlob || blob.size < bestBlob.size) bestBlob = blob;
+                    if (blob.size <= this.uploadMaxBytes) {
+                        return this.blobToUploadFile(blob, file);
+                    }
+                }
+            }
+
+            if (bestBlob && bestBlob.size < file.size) {
+                return this.blobToUploadFile(bestBlob, file);
+            }
+            throw new Error('图片压缩失败');
+        },
+        blobToUploadFile(blob, originalFile) {
+            const baseName = (originalFile.name || 'image').replace(/\.[^.]+$/, '') || 'image';
+            return new File([blob], `${baseName}-compressed.jpg`, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+            });
+        },
+        async prepareScanFile(file) {
+            if (!(file.type || '').startsWith('image/') && !/\.(avif|heic|heif|jpg|jpeg|png|webp|gif|bmp|tiff|tif)$/i.test(file.name)) {
+                throw new Error('不支持的图片格式');
+            }
+
+            if (file.size <= this.uploadMaxBytes) {
+                return {
+                    file,
+                    originalName: file.name,
+                    originalSize: file.size,
+                    compressedSize: file.size,
+                    compressed: false,
+                };
+            }
+
+            try {
+                const compressedFile = await this.compressImageFile(file);
+                return {
+                    file: compressedFile,
+                    originalName: file.name,
+                    originalSize: file.size,
+                    compressedSize: compressedFile.size,
+                    compressed: true,
+                };
+            } catch (e) {
+                if (file.size <= this.uploadServerMaxBytes) {
+                    return {
+                        file,
+                        originalName: file.name,
+                        originalSize: file.size,
+                        compressedSize: file.size,
+                        compressed: false,
+                        serverCompressionFallback: true,
+                    };
+                }
+                throw e;
+            }
+        },
         async addScanFiles(files) {
             const remaining = 5 - this.scanItems.length;
             if (remaining <= 0) {
                 this.showToast('最多同时导入 5 张图片');
                 return;
             }
-            const accepted = [];
-            let oversizedCount = 0;
-            for (const file of files) {
-                if (file.size > this.uploadMaxBytes) {
-                    oversizedCount += 1;
-                    continue;
-                }
-                accepted.push(file);
-            }
-            if (oversizedCount > 0) {
-                this.showToast(`有 ${oversizedCount} 张图片超过 1MB，无法上传`);
-            }
-            const selected = accepted.slice(0, remaining);
+            const selected = files.slice(0, remaining);
             if (files.length > remaining) {
                 this.showToast('已限制为最多 5 张图片');
             }
             if (!selected.length) return;
-            const items = await Promise.all(selected.map(file => this.createScanItem(file)));
+            this.scanStatus = 'compressing';
+            this.scanError = '';
+            this.scanBatchTotal = selected.length;
+            const items = [];
+            let compressedCount = 0;
+            let failedCount = 0;
+            for (const [index, file] of selected.entries()) {
+                this.scanCurrentIndex = index;
+                try {
+                    const prepared = await this.prepareScanFile(file);
+                    if (prepared.compressed) compressedCount += 1;
+                    items.push(await this.createScanItem(prepared.file, prepared));
+                } catch (e) {
+                    failedCount += 1;
+                }
+            }
+            this.scanStatus = null;
+            this.scanBatchTotal = 0;
+            this.scanCurrentIndex = 0;
             this.scanItems.push(...items);
             this.scanStatus = null;
             this.scanError = '';
+            if (compressedCount > 0) {
+                this.showToast(`已自动压缩 ${compressedCount} 张图片`);
+            }
+            if (failedCount > 0) {
+                this.showToast(`${failedCount} 张图片无法自动压缩，请换一张 JPG/PNG 照片`);
+            }
         },
-        createScanItem(file) {
+        createScanItem(file, meta = {}) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     resolve({
                         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
                         file,
+                        originalName: meta.originalName || file.name,
+                        originalSize: meta.originalSize || file.size,
+                        compressedSize: meta.compressedSize || file.size,
+                        compressed: Boolean(meta.compressed),
+                        serverCompressionFallback: Boolean(meta.serverCompressionFallback),
                         preview: e.target.result,
                         status: 'pending',
                         error: '',
@@ -2658,7 +2788,18 @@ createApp({
             if (item.status === 'done') return '识别完成，待确认';
             if (item.status === 'imported') return '已导入';
             if (item.status === 'error') return item.error || '处理失败';
+            if (item.serverCompressionFallback) return `将由服务器压缩 ${this.formatFileSize(item.originalSize)}`;
+            if (item.compressed) return `已压缩 ${this.formatFileSize(item.originalSize)} -> ${this.formatFileSize(item.compressedSize)}`;
             return '待处理';
+        },
+        scanItemSizeLabel(item) {
+            if (item.compressed) {
+                return `${this.formatFileSize(item.originalSize)} -> ${this.formatFileSize(item.compressedSize)}`;
+            }
+            if (item.serverCompressionFallback) {
+                return `${this.formatFileSize(item.originalSize)}，上传时继续压缩`;
+            }
+            return this.formatFileSize(item.originalSize || item.file.size);
         },
         getCategoryCount(name) {
             if (name === '危险试剂') {
