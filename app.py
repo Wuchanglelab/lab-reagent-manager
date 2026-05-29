@@ -324,7 +324,8 @@ def use_blob_storage():
 
 
 def blob_access_mode():
-    return os.environ.get("BLOB_ACCESS", "private")
+    access = str(os.environ.get("BLOB_ACCESS") or "public").strip().lower()
+    return "private" if access == "private" else "public"
 
 
 def ensure_column(table_name, column_name, column_type):
