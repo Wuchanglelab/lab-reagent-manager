@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import io
 import mimetypes
 import os
@@ -41,6 +43,7 @@ STORAGE_SHORTCUT_CATEGORY_MAP = {
     "-20°C冰箱": "-20",
     "-80°C冰箱": "-80",
 }
+ADMIN_TOKEN_MESSAGE = "lab-reagent-manager-admin"
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
 MAX_UPLOAD_MB = 12
@@ -223,6 +226,40 @@ def get_ai_client_config():
         or DEFAULT_OPENAI_MODEL
     )
     return api_base, api_key, model
+
+
+def get_admin_password():
+    return os.environ.get("LAB_ADMIN_PASSWORD") or os.environ.get("ADMIN_PASSWORD") or ""
+
+
+def get_admin_name():
+    return os.environ.get("LAB_ADMIN_NAME") or os.environ.get("ADMIN_NAME") or "管理员"
+
+
+def make_admin_token(password):
+    return hmac.new(
+        str(password).encode("utf-8"),
+        ADMIN_TOKEN_MESSAGE.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def admin_token_from_request():
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return request.headers.get("X-Admin-Token", "").strip()
+
+
+def require_admin():
+    password = get_admin_password()
+    if not password:
+        return jsonify({"error": "未配置管理员口令，请先设置 LAB_ADMIN_PASSWORD"}), 503
+    expected = make_admin_token(password)
+    provided = admin_token_from_request()
+    if not provided or not hmac.compare_digest(provided, expected):
+        return jsonify({"error": "需要管理员权限"}), 401
+    return None
 
 
 def parse_model_json_content(resp_data):
@@ -935,6 +972,36 @@ def get_ai_config_status():
     )
 
 
+@app.route("/api/admin/config", methods=["GET"])
+def get_admin_config_status():
+    return jsonify(
+        {
+            "admin_configured": bool(get_admin_password()),
+            "admin_name": get_admin_name(),
+        }
+    )
+
+
+@app.route("/api/admin/login", methods=["POST"])
+def admin_login():
+    configured_password = get_admin_password()
+    if not configured_password:
+        return jsonify({"error": "未配置管理员口令，请先设置 LAB_ADMIN_PASSWORD"}), 503
+
+    data = request.json or {}
+    password = str(data.get("password") or "")
+    if not password or not hmac.compare_digest(password, configured_password):
+        return jsonify({"error": "管理员口令不正确"}), 401
+
+    return jsonify(
+        {
+            "success": True,
+            "token": make_admin_token(configured_password),
+            "admin_name": get_admin_name(),
+        }
+    )
+
+
 # ---------- Category API ----------
 
 
@@ -1132,6 +1199,10 @@ def update_reagent(reagent_id):
 
 @app.route("/api/reagents/<reagent_id>", methods=["DELETE"])
 def delete_reagent(reagent_id):
+    admin_error = require_admin()
+    if admin_error:
+        return admin_error
+
     session = SessionLocal()
     try:
         reagent = session.get(Reagent, reagent_id)

@@ -778,6 +778,10 @@
                              :class="{'active': currentView === 'records'}" @click="currentView='records'; loadUsageRecords()">
                             <span class="text-lg">📝</span><span class="text-sm">使用记录</span>
                         </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             @click="openAdminModal()">
+                            <span class="text-lg">🔐</span><span class="text-sm">{{adminAuthenticated ? '管理员已登录' : '管理员登录'}}</span>
+                        </div>
                     </nav>
                     <div class="mt-auto mx-4 mb-4 rounded-2xl border border-white/15 bg-white/12 p-4">
                         <div class="sidebar-muted text-xs uppercase tracking-[0.2em]">安全提示</div>
@@ -1125,7 +1129,8 @@
                                             <div class="flex items-center justify-center gap-2">
                                                 <button @click="openUseModal(r)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">领用</button>
                                                 <button @click="openEditModal(r)" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">编辑</button>
-                                                <button @click="deleteReagent(r)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-100">删除</button>
+                                                <button v-if="adminAuthenticated" @click="deleteReagent(r)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-100">删除</button>
+                                                <button v-else @click="openAdminModal()" class="rounded-xl bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100">管理员删除</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -1269,6 +1274,34 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Admin Modal -->
+    <div v-if="showAdminModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showAdminModal=false">
+        <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-slate-100">
+                <h3 class="text-lg font-bold text-gray-800">管理员权限</h3>
+                <p class="mt-1 text-sm text-slate-500">普通用户无需登录；删除试剂需要管理员口令。</p>
+            </div>
+            <div class="p-6 space-y-4 bg-slate-50/55">
+                <div v-if="!adminConfigured" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    管理员口令未配置。请在部署环境变量中设置 LAB_ADMIN_PASSWORD。
+                </div>
+                <div v-else-if="adminAuthenticated" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    当前已以 {{adminName}} 身份登录，可删除试剂记录。
+                </div>
+                <div v-else>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">管理员口令</label>
+                    <input v-model="adminPassword" type="password" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="输入管理员口令" @keyup.enter="loginAdmin()">
+                </div>
+                <div v-if="adminError" class="text-sm text-red-500">{{adminError}}</div>
+            </div>
+            <div class="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button @click="showAdminModal=false" class="btn-secondary">关闭</button>
+                <button v-if="adminAuthenticated" @click="logoutAdmin()" class="btn-secondary">退出管理员</button>
+                <button v-else @click="loginAdmin()" class="btn-primary" :disabled="!adminConfigured || !adminPassword">登录</button>
+            </div>
+        </div>
     </div>
 
     <!-- Add/Edit Reagent Modal -->
@@ -1760,6 +1793,7 @@ createApp({
             showApprovalModal: false,
             showReceiveModal: false,
             showStockInModal: false,
+            showAdminModal: false,
             editingReagent: null,
             form: this.emptyForm(),
             useForm: this.emptyUseForm(),
@@ -1777,6 +1811,11 @@ createApp({
             aiInspection: null,
             aiInspectionLoading: false,
             aiInspectionError: '',
+            adminConfigured: false,
+            adminName: '管理员',
+            adminToken: localStorage.getItem('lab_admin_token') || '',
+            adminPassword: '',
+            adminError: '',
             quickFilter: '',
             scanCurrentIndex: 0,
             scanImportedCount: 0,
@@ -1829,6 +1868,9 @@ createApp({
         },
         scanBusy() {
             return ['compressing', 'uploading', 'recognizing'].includes(this.scanStatus);
+        },
+        adminAuthenticated() {
+            return Boolean(this.adminToken);
         },
         scanProgressText() {
             const total = this.scanStatus === 'compressing'
@@ -2237,6 +2279,20 @@ createApp({
                 this.mailConfig = { smtp_configured: false, approver_configured: false, approver_count: 0 };
             }
         },
+        async loadAdminConfig() {
+            try {
+                const res = await fetch('/api/admin/config');
+                const data = await res.json();
+                this.adminConfigured = Boolean(data.admin_configured);
+                this.adminName = data.admin_name || '管理员';
+                if (!this.adminConfigured) {
+                    this.adminToken = '';
+                    localStorage.removeItem('lab_admin_token');
+                }
+            } catch (e) {
+                this.adminConfigured = false;
+            }
+        },
         async readApiResponse(res, fallbackMessage) {
             const text = await res.text();
             let data = {};
@@ -2360,6 +2416,38 @@ createApp({
         openPurchaseModal() {
             this.purchaseForm = { ...this.emptyPurchaseForm(), ...this.getContextFormDefaults() };
             this.showPurchaseModal = true;
+        },
+        openAdminModal() {
+            this.adminPassword = '';
+            this.adminError = '';
+            this.showAdminModal = true;
+            this.loadAdminConfig();
+        },
+        async loginAdmin() {
+            if (!this.adminPassword) return;
+            this.adminError = '';
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: this.adminPassword }),
+                });
+                const data = await this.readApiResponse(res, '管理员登录失败');
+                this.adminToken = data.token || '';
+                this.adminName = data.admin_name || this.adminName || '管理员';
+                localStorage.setItem('lab_admin_token', this.adminToken);
+                this.adminPassword = '';
+                this.showToast('管理员已登录');
+            } catch (e) {
+                this.adminError = e.message || '管理员登录失败';
+            }
+        },
+        logoutAdmin() {
+            this.adminToken = '';
+            this.adminPassword = '';
+            this.adminError = '';
+            localStorage.removeItem('lab_admin_token');
+            this.showToast('已退出管理员');
         },
         openApprovalModal(item, decision = 'approve') {
             this.approvalForm = {
@@ -2589,11 +2677,24 @@ createApp({
             this.loadUsageRecords();
         },
         async deleteReagent(r) {
+            if (!this.adminAuthenticated) {
+                this.openAdminModal();
+                return;
+            }
             if (!confirm(`确定要删除"${r.name}"吗？相关使用记录也会被删除。`)) return;
-            await fetch(`/api/reagents/${r.id}`, { method: 'DELETE' });
-            this.showToast('已删除');
-            this.loadReagents();
-            this.loadStats();
+            const res = await fetch(`/api/reagents/${r.id}`, {
+                method: 'DELETE',
+                headers: { 'X-Admin-Token': this.adminToken },
+            });
+            try {
+                await this.readApiResponse(res, '删除失败');
+                this.showToast('已删除');
+                this.loadReagents();
+                this.loadStats();
+            } catch (e) {
+                if (res.status === 401) this.logoutAdmin();
+                this.showToast(e.message || '删除失败');
+            }
         },
         handleFileSelect(e) {
             const files = Array.from(e.target.files || []);
@@ -2960,6 +3061,7 @@ createApp({
         this.loadStats();
         this.loadPurchaseStats();
         this.loadMailConfig();
+        this.loadAdminConfig();
     }
 }).mount('#app');
 </script>
