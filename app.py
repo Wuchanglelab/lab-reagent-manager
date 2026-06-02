@@ -50,6 +50,9 @@ EXPENSE_BUCKETS = [
     {"key": "instrument", "label": "仪器"},
     {"key": "proxy", "label": "代购"},
 ]
+DONGLE_RESOURCE_NAME = "代谢组数据处理密码狗"
+DONGLE_ACTIVE_STATUS = "已预约"
+DONGLE_CANCELLED_STATUS = "已取消"
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "gif", "bmp", "tiff", "tif", "heic", "heif", "svg"}
 MAX_UPLOAD_MB = 12
@@ -165,6 +168,22 @@ class PurchaseRequest(Base):
     requester_notified_at = Column(String)
     approver_email_error = Column(String)
     requester_email_error = Column(String)
+
+
+class DongleReservation(Base):
+    __tablename__ = "dongle_reservations"
+
+    id = Column(String, primary_key=True)
+    resource_name = Column(String, default=DONGLE_RESOURCE_NAME)
+    user_name = Column(String, nullable=False)
+    user_contact = Column(String)
+    start_at = Column(String, nullable=False)
+    end_at = Column(String, nullable=False)
+    project = Column(String)
+    notes = Column(String)
+    status = Column(String, default=DONGLE_ACTIVE_STATUS)
+    created_at = Column(String, default=lambda: now_text())
+    updated_at = Column(String, default=lambda: now_text())
 
 
 def now_text():
@@ -615,6 +634,22 @@ def parse_expiry_date(value):
         return None
 
 
+def parse_datetime_value(value):
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("请选择预约时间")
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    raise ValueError("时间格式不正确")
+
+
+def datetime_text(value):
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def is_expiring_soon(value, days=30):
     expiry = parse_expiry_date(value)
     if not expiry:
@@ -833,6 +868,13 @@ def serialize_purchase_request(row, session=None):
         stock_matches = find_purchase_stock_matches(session, row)
         data["stock_matches"] = stock_matches
         data["stock_available"] = any(match["quantity"] > 0 for match in stock_matches)
+    return data
+
+
+def serialize_dongle_reservation(row):
+    data = model_to_dict(row)
+    data["resource_name"] = data.get("resource_name") or DONGLE_RESOURCE_NAME
+    data["status"] = data.get("status") or DONGLE_ACTIVE_STATUS
     return data
 
 
@@ -1306,6 +1348,119 @@ def delete_reagent(reagent_id):
         if not reagent:
             return jsonify({"error": "试剂不存在"}), 404
         session.delete(reagent)
+        session.commit()
+        return jsonify({"success": True})
+    finally:
+        session.close()
+
+
+# ---------- Dongle Reservation API ----------
+
+
+@app.route("/api/dongle-reservations", methods=["GET"])
+def get_dongle_reservations():
+    session = SessionLocal()
+    try:
+        include_cancelled = request.args.get("include_cancelled") == "1"
+        query = session.query(DongleReservation)
+        if not include_cancelled:
+            query = query.filter(DongleReservation.status != DONGLE_CANCELLED_STATUS)
+
+        start_from = request.args.get("from")
+        end_to = request.args.get("to")
+        if start_from:
+            try:
+                query = query.filter(DongleReservation.end_at >= datetime_text(parse_datetime_value(start_from)))
+            except ValueError:
+                return jsonify({"error": "开始筛选时间格式不正确"}), 400
+        if end_to:
+            try:
+                query = query.filter(DongleReservation.start_at <= datetime_text(parse_datetime_value(end_to)))
+            except ValueError:
+                return jsonify({"error": "结束筛选时间格式不正确"}), 400
+
+        rows = query.order_by(DongleReservation.start_at.asc()).limit(300).all()
+        return jsonify([serialize_dongle_reservation(row) for row in rows])
+    finally:
+        session.close()
+
+
+@app.route("/api/dongle-reservations", methods=["POST"])
+def add_dongle_reservation():
+    data = request.json or {}
+    user_name = str(data.get("user_name") or "").strip()
+    if not user_name:
+        return jsonify({"error": "请填写预约人"}), 400
+
+    try:
+        start_at = parse_datetime_value(data.get("start_at"))
+        end_at = parse_datetime_value(data.get("end_at"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if end_at <= start_at:
+        return jsonify({"error": "结束时间必须晚于开始时间"}), 400
+    if end_at - start_at > timedelta(days=14):
+        return jsonify({"error": "单次预约不能超过 14 天"}), 400
+
+    start_text = datetime_text(start_at)
+    end_text = datetime_text(end_at)
+    session = SessionLocal()
+    try:
+        conflict = (
+            session.query(DongleReservation)
+            .filter(DongleReservation.status != DONGLE_CANCELLED_STATUS)
+            .filter(DongleReservation.start_at < end_text)
+            .filter(DongleReservation.end_at > start_text)
+            .order_by(DongleReservation.start_at.asc())
+            .first()
+        )
+        if conflict:
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            f"该时间段已被 {conflict.user_name} 预约："
+                            f"{conflict.start_at} 至 {conflict.end_at}"
+                        )
+                    }
+                ),
+                409,
+            )
+
+        reservation = DongleReservation(
+            id=str(uuid.uuid4())[:8],
+            resource_name=str(data.get("resource_name") or DONGLE_RESOURCE_NAME).strip() or DONGLE_RESOURCE_NAME,
+            user_name=user_name,
+            user_contact=str(data.get("user_contact") or "").strip(),
+            start_at=start_text,
+            end_at=end_text,
+            project=str(data.get("project") or "").strip(),
+            notes=str(data.get("notes") or "").strip(),
+            status=DONGLE_ACTIVE_STATUS,
+            created_at=now_text(),
+            updated_at=now_text(),
+        )
+        session.add(reservation)
+        session.commit()
+        return jsonify({"success": True, "id": reservation.id, "reservation": serialize_dongle_reservation(reservation)})
+    finally:
+        session.close()
+
+
+@app.route("/api/dongle-reservations/<reservation_id>", methods=["DELETE"])
+def cancel_dongle_reservation(reservation_id):
+    admin_error = require_admin()
+    if admin_error:
+        return admin_error
+
+    session = SessionLocal()
+    try:
+        reservation = session.get(DongleReservation, reservation_id)
+        if not reservation:
+            return jsonify({"error": "预约记录不存在"}), 404
+        reservation.status = DONGLE_CANCELLED_STATUS
+        reservation.updated_at = now_text()
         session.commit()
         return jsonify({"success": True})
     finally:

@@ -752,6 +752,11 @@
                             <span class="text-lg">🧾</span><span class="text-sm font-medium">采购审批</span>
                             <span class="sidebar-badge ml-auto rounded-full px-2 py-0.5 text-[11px]">{{purchaseStats.active || 0}}</span>
                         </div>
+                        <div class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
+                             :class="{'active': currentView === 'dongle'}" @click="openDongleView()">
+                            <span class="text-lg">🔑</span><span class="text-sm font-medium">密码狗预约</span>
+                            <span class="sidebar-badge ml-auto rounded-full px-2 py-0.5 text-[11px]">{{activeDongleReservations.length}}</span>
+                        </div>
                         <div class="sidebar-section-label px-4 pt-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.22em]">分类导航</div>
                         <div v-for="cat in categories" :key="cat.id"
                              class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer"
@@ -1265,6 +1270,102 @@
                     </section>
                 </div>
 
+                <div v-if="currentView === 'dongle'" class="pt-6 space-y-5">
+                    <section class="section-card overflow-hidden">
+                        <div class="border-b border-slate-100 px-6 py-5">
+                            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                                <div>
+                                    <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Dongle Booking</div>
+                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">代谢组数据处理密码狗</h3>
+                                    <p class="mt-1 text-sm text-slate-500">填写预约人和使用时间，系统会自动拦截重叠时段。</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <span class="toolbar-chip">有效预约 {{activeDongleReservations.length}}</span>
+                                    <span class="toolbar-chip">{{nextDongleReservation ? '下一场 ' + formatDateTime(nextDongleReservation.start_at) : '暂无排期'}}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-5 p-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h4 class="text-lg font-semibold text-slate-900">提交预约</h4>
+                                        <p class="mt-1 text-sm text-slate-500">普通用户无需登录。</p>
+                                    </div>
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">Metabolomics</span>
+                                </div>
+                                <div class="mt-5 space-y-4">
+                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-600 mb-1">预约人 *</label>
+                                            <input v-model.trim="dongleForm.user_name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="姓名">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-600 mb-1">联系方式</label>
+                                            <input v-model.trim="dongleForm.user_contact" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="手机 / 邮箱 / 微信">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-600 mb-1">开始时间 *</label>
+                                            <input v-model="dongleForm.start_at" type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-600 mb-1">结束时间 *</label>
+                                            <input v-model="dongleForm.end_at" type="datetime-local" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-600 mb-1">项目 / 样本批次</label>
+                                        <input v-model.trim="dongleForm.project" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：血清代谢组 2026-06 批次">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-600 mb-1">备注</label>
+                                        <textarea v-model.trim="dongleForm.notes" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="数据量、预计用途或交接说明"></textarea>
+                                    </div>
+                                    <div v-if="dongleError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                                        {{dongleError}}
+                                    </div>
+                                    <button @click="submitDongleReservation()" class="btn-primary w-full" :disabled="dongleLoading || !dongleForm.user_name || !dongleForm.start_at || !dongleForm.end_at">
+                                        {{dongleLoading ? '提交中...' : '提交预约'}}
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <h4 class="text-lg font-semibold text-slate-900">当前排期</h4>
+                                        <p class="mt-1 text-sm text-slate-500">按开始时间排序，已取消的预约默认不显示。</p>
+                                    </div>
+                                    <button @click="loadDongleReservations()" class="btn-secondary">刷新</button>
+                                </div>
+                                <div class="mt-5 space-y-3">
+                                    <div v-for="item in activeDongleReservations" :key="item.id" class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div class="min-w-0">
+                                                <div class="text-sm font-semibold text-slate-900">{{formatDateTimeRange(item.start_at, item.end_at)}}</div>
+                                                <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                                                    <span class="rounded-full bg-white px-2.5 py-1">预约人：{{item.user_name}}</span>
+                                                    <span v-if="item.user_contact" class="rounded-full bg-white px-2.5 py-1">联系：{{item.user_contact}}</span>
+                                                </div>
+                                            </div>
+                                            <span class="badge bg-emerald-100 text-emerald-700">{{item.status || '已预约'}}</span>
+                                        </div>
+                                        <div v-if="item.project" class="mt-3 text-sm text-slate-700">{{item.project}}</div>
+                                        <div v-if="item.notes" class="mt-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-500">{{item.notes}}</div>
+                                        <div class="mt-4 flex flex-wrap justify-end gap-2">
+                                            <button v-if="adminAuthenticated" @click="cancelDongleReservation(item)" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">取消预约</button>
+                                            <button v-else @click="openAdminModal()" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">管理员取消</button>
+                                        </div>
+                                    </div>
+                                    <div v-if="activeDongleReservations.length === 0" class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                                        <div class="text-lg font-semibold text-slate-700">暂无预约</div>
+                                        <div class="mt-2 text-sm text-slate-400">可以直接在左侧提交第一个使用时段。</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
                 <div v-if="currentView === 'records'" class="pt-6 space-y-5">
                     <section class="section-card overflow-hidden">
                         <div class="border-b border-slate-100 px-6 py-5">
@@ -1319,14 +1420,14 @@
         <div class="w-full max-w-md rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl overflow-hidden">
             <div class="p-6 border-b border-slate-100">
                 <h3 class="text-lg font-bold text-gray-800">管理员权限</h3>
-                <p class="mt-1 text-sm text-slate-500">普通用户无需登录；删除试剂需要管理员口令。</p>
+                <p class="mt-1 text-sm text-slate-500">普通用户无需登录；删除试剂和取消密码狗预约需要管理员口令。</p>
             </div>
             <div class="p-6 space-y-4 bg-slate-50/55">
                 <div v-if="!adminConfigured" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     管理员口令未配置。请在部署环境变量中设置 LAB_ADMIN_PASSWORD。
                 </div>
                 <div v-else-if="adminAuthenticated" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                    当前已以 {{adminName}} 身份登录，可删除试剂记录。
+                    当前已以 {{adminName}} 身份登录，可删除试剂记录和取消密码狗预约。
                 </div>
                 <div v-else>
                     <label class="block text-sm font-medium text-gray-600 mb-1">管理员口令</label>
@@ -1818,6 +1919,10 @@ createApp({
             reagents: [],
             usageRecords: [],
             purchases: [],
+            dongleReservations: [],
+            dongleForm: this.emptyDongleForm(),
+            dongleError: '',
+            dongleLoading: false,
             purchaseStats: {},
             mailConfig: { smtp_configured: false, approver_configured: false, approver_count: 0 },
             stats: {},
@@ -1867,12 +1972,16 @@ createApp({
         viewTitle() {
             if (this.currentView === 'dashboard') return '仪表盘概览';
             if (this.currentView === 'procurement') return '采购审批与入库';
+            if (this.currentView === 'dongle') return '密码狗预约';
             if (this.currentView === 'records') return '使用记录追踪';
             return this.filterCategory || '全部试剂';
         },
         viewSubtitle() {
             if (this.currentView === 'procurement') {
                 return '把采购申请、审批、验货和库存入库放在同一个流程里。';
+            }
+            if (this.currentView === 'dongle') {
+                return '代谢组数据处理密码狗排期与预约，避免同一时间重复占用。';
             }
             return '聚焦库存状态、风险等级和近期流转记录。';
         },
@@ -1903,6 +2012,22 @@ createApp({
                 caption: meta[status] ? meta[status].caption : 'Workflow',
                 items: this.purchases.filter(item => item.status === status),
             }));
+        },
+        activeDongleReservations() {
+            return [...this.dongleReservations]
+                .filter(item => (item.status || '已预约') !== '已取消')
+                .sort((a, b) => {
+                    const left = this.parseDateTime(a.start_at);
+                    const right = this.parseDateTime(b.start_at);
+                    return (left ? left.getTime() : 0) - (right ? right.getTime() : 0);
+                });
+        },
+        nextDongleReservation() {
+            const now = Date.now();
+            return this.activeDongleReservations.find(item => {
+                const end = this.parseDateTime(item.end_at);
+                return end && end.getTime() >= now;
+            }) || null;
         },
         expenseStats() {
             const fallbackBuckets = [
@@ -2089,6 +2214,20 @@ createApp({
                 notes: '',
             };
         },
+        emptyDongleForm() {
+            const start = new Date();
+            start.setMinutes(0, 0, 0);
+            start.setHours(start.getHours() + 1);
+            const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+            return {
+                user_name: '',
+                user_contact: '',
+                start_at: this.datetimeLocalValue(start),
+                end_at: this.datetimeLocalValue(end),
+                project: '',
+                notes: '',
+            };
+        },
         emptyPurchaseForm() {
             return {
                 reagent_name: '',
@@ -2162,6 +2301,44 @@ createApp({
             const num = Number(value || 0);
             if (!Number.isFinite(num)) return '¥0';
             return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+        },
+        datetimeLocalValue(date) {
+            const pad = value => String(value).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        },
+        parseDateTime(value) {
+            if (!value) return null;
+            const date = new Date(String(value).replace(' ', 'T'));
+            return Number.isNaN(date.getTime()) ? null : date;
+        },
+        formatDateTime(value) {
+            const date = this.parseDateTime(value);
+            if (!date) return value || '-';
+            return date.toLocaleString('zh-CN', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            });
+        },
+        formatDateTimeRange(start, end) {
+            const startDate = this.parseDateTime(start);
+            const endDate = this.parseDateTime(end);
+            if (!startDate || !endDate) return `${start || '-'} 至 ${end || '-'}`;
+            const sameDay = startDate.toDateString() === endDate.toDateString();
+            const startText = startDate.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            });
+            const endText = endDate.toLocaleString('zh-CN', sameDay
+                ? { hour: '2-digit', minute: '2-digit', hour12: false }
+                : { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+            return `${startText} - ${endText}`;
         },
         expenseBucketClass(key) {
             const map = {
@@ -2344,6 +2521,14 @@ createApp({
             const res = await fetch('/api/purchases/stats');
             this.purchaseStats = await res.json();
         },
+        async loadDongleReservations() {
+            try {
+                const res = await fetch('/api/dongle-reservations');
+                this.dongleReservations = await res.json();
+            } catch (e) {
+                this.dongleReservations = [];
+            }
+        },
         async loadMailConfig() {
             try {
                 const res = await fetch('/api/mail/config');
@@ -2414,6 +2599,8 @@ createApp({
             this.searchTimer = setTimeout(() => {
                 if (this.currentView === 'procurement') {
                     this.loadPurchases();
+                } else if (this.currentView === 'dongle') {
+                    this.loadDongleReservations();
                 } else {
                     this.currentView = 'reagents';
                     this.loadReagents();
@@ -2441,6 +2628,13 @@ createApp({
             this.quickFilter = '';
             this.procurementFilter = status || '';
             this.loadPurchases();
+        },
+        openDongleView() {
+            this.currentView = 'dongle';
+            this.filterCategory = '';
+            this.quickFilter = '';
+            this.procurementFilter = '';
+            this.loadDongleReservations();
         },
         openCategoryFilter(name) {
             const shortcutMap = {
@@ -2592,6 +2786,27 @@ createApp({
                 payload.storage_temp = '-80°C';
             }
             return payload;
+        },
+        async submitDongleReservation() {
+            if (!this.dongleForm.user_name || !this.dongleForm.start_at || !this.dongleForm.end_at) return;
+            this.dongleLoading = true;
+            this.dongleError = '';
+            try {
+                const res = await fetch('/api/dongle-reservations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.dongleForm),
+                });
+                await this.readApiResponse(res, '提交预约失败');
+                this.showToast('密码狗预约已提交');
+                this.dongleForm = this.emptyDongleForm();
+                await this.loadDongleReservations();
+            } catch (e) {
+                this.dongleError = e.message || '提交预约失败';
+                this.showToast(this.dongleError);
+            } finally {
+                this.dongleLoading = false;
+            }
         },
         async savePurchaseRequest() {
             if (!this.purchaseForm.reagent_name || !this.purchaseForm.requester || !this.purchaseForm.requester_email) return;
@@ -2767,6 +2982,25 @@ createApp({
             } catch (e) {
                 if (res.status === 401) this.logoutAdmin();
                 this.showToast(e.message || '删除失败');
+            }
+        },
+        async cancelDongleReservation(item) {
+            if (!this.adminAuthenticated) {
+                this.openAdminModal();
+                return;
+            }
+            if (!confirm(`确定要取消 ${item.user_name} 的密码狗预约吗？`)) return;
+            const res = await fetch(`/api/dongle-reservations/${item.id}`, {
+                method: 'DELETE',
+                headers: { 'X-Admin-Token': this.adminToken },
+            });
+            try {
+                await this.readApiResponse(res, '取消预约失败');
+                this.showToast('预约已取消');
+                this.loadDongleReservations();
+            } catch (e) {
+                if (res.status === 401) this.logoutAdmin();
+                this.showToast(e.message || '取消预约失败');
             }
         },
         handleFileSelect(e) {
@@ -3133,6 +3367,7 @@ createApp({
         this.loadReagents();
         this.loadStats();
         this.loadPurchaseStats();
+        this.loadDongleReservations();
         this.loadMailConfig();
         this.loadAdminConfig();
     }
