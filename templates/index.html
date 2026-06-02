@@ -1092,57 +1092,121 @@
             background: #ffffff;
         }
 
-        .calendar-table {
-            width: 100%;
-            min-width: 980px;
-            table-layout: fixed;
-            border-collapse: separate;
-            border-spacing: 0;
+        .calendar-section {
+            border-radius: var(--radius);
+            border: 1px solid var(--line);
+            background: #ffffff;
+            overflow: hidden;
+        }
+
+        .calendar-section-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            border-bottom: 1px solid var(--line);
+            background: #f7fbfc;
+            padding: 0.8rem 1rem;
+        }
+
+        .calendar-grid-scroll {
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+        }
+
+        .calendar-scheduler-grid {
+            --calendar-hour-height: 3rem;
+            display: grid;
+            grid-template-columns: 5.75rem repeat(7, minmax(8.8rem, 1fr));
+            min-width: 1120px;
             font-size: 0.875rem;
         }
 
-        .calendar-table th {
-            border-top: 1px solid var(--line);
+        .calendar-time-head,
+        .calendar-day-head {
+            min-height: 4.8rem;
             border-bottom: 1px solid var(--line);
             border-right: 1px solid var(--line);
-            background: #f2f8f9;
-            padding: 0.8rem;
-            text-align: left;
+            background: #eef7f9;
+            padding: 0.75rem;
         }
 
-        .calendar-table th:first-child {
-            border-left: 1px solid var(--line);
-            border-top-left-radius: var(--radius);
+        .calendar-time-head {
+            display: flex;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 700;
         }
 
-        .calendar-table th:last-child {
-            border-top-right-radius: var(--radius);
+        .calendar-day-head:last-of-type,
+        .calendar-day-rail:last-child {
+            border-right: 0;
         }
 
-        .calendar-table td {
-            height: 20rem;
-            vertical-align: top;
+        .calendar-time-rail,
+        .calendar-day-rail {
+            min-height: calc(12 * var(--calendar-hour-height));
+        }
+
+        .calendar-time-rail {
+            display: grid;
+            grid-template-rows: repeat(12, var(--calendar-hour-height));
+            border-right: 1px solid var(--line);
+            background: #f8fbfc;
+        }
+
+        .calendar-time-slot {
+            display: flex;
+            align-items: flex-start;
             border-bottom: 1px solid var(--line);
+            padding: 0.45rem 0.55rem;
+            color: #526a72;
+            font-size: 0.72rem;
+            font-weight: 700;
+            line-height: 1.15;
+        }
+
+        .calendar-day-rail {
+            position: relative;
+            overflow: hidden;
             border-right: 1px solid var(--line);
             background: #ffffff;
-            padding: 0.8rem;
         }
 
-        .calendar-table td:first-child {
-            border-left: 1px solid var(--line);
+        .calendar-hour-slot {
+            height: var(--calendar-hour-height);
+            border-bottom: 1px solid #edf4f6;
+        }
+
+        .calendar-hour-slot:nth-child(2n) {
+            background: #fbfdfe;
         }
 
         .calendar-event {
+            position: absolute;
+            left: 0.42rem;
+            right: 0.42rem;
+            z-index: 2;
+            overflow: hidden;
             border-radius: var(--radius);
             border: 1px solid rgba(8, 145, 178, 0.22);
             background: linear-gradient(180deg, #ecfeff, #f7feff);
             box-shadow: inset 3px 0 0 var(--primary);
+            padding: 0.55rem 0.7rem;
         }
 
         .calendar-empty {
+            position: absolute;
+            inset: 38% 0.7rem auto;
             border-radius: var(--radius);
             border: 1px dashed var(--line-strong);
             background: #f8fbfc;
+            padding: 0.8rem;
+            text-align: center;
+            color: #8aa0a7;
+            font-size: 0.78rem;
+            font-weight: 700;
         }
 
         .alert-note {
@@ -1204,12 +1268,10 @@
                 font-size: 1.45rem !important;
             }
 
-            .calendar-table {
-                min-width: 860px;
-            }
-
-            .calendar-table td {
-                height: 17rem;
+            .calendar-scheduler-grid {
+                --calendar-hour-height: 2.75rem;
+                grid-template-columns: 5.25rem repeat(7, minmax(8rem, 1fr));
+                min-width: 980px;
             }
 
             .data-table {
@@ -1819,7 +1881,7 @@
                                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
                                         <h4 class="text-lg font-semibold text-slate-900">周排期表</h4>
-                                        <p class="mt-1 text-sm text-slate-500">{{dongleWeekLabel}}，预约块按当天时间顺序显示。</p>
+                                        <p class="mt-1 text-sm text-slate-500">{{dongleWeekLabel}}，按 1 小时刻度分上午和下午显示。</p>
                                     </div>
                                     <div class="flex flex-wrap gap-2">
                                         <button @click="shiftDongleWeek(-1)" class="btn-secondary">上一周</button>
@@ -1828,11 +1890,19 @@
                                         <button @click="loadDongleReservations()" class="btn-secondary">刷新</button>
                                     </div>
                                 </div>
-                                <div class="mt-5 overflow-x-auto">
-                                    <table class="calendar-table">
-                                        <thead>
-                                            <tr>
-                                                <th v-for="day in dongleWeekDays" :key="day.key" class="border-y border-r border-slate-200 bg-slate-50 px-3 py-3 text-left first:border-l first:rounded-l-xl last:rounded-r-xl">
+                                <div class="mt-5 space-y-4">
+                                    <div v-for="section in dongleCalendarSections" :key="section.key" class="calendar-section">
+                                        <div class="calendar-section-bar">
+                                            <div>
+                                                <div class="text-sm font-semibold text-slate-900">{{section.label}}</div>
+                                                <div class="mt-0.5 text-xs text-slate-500">{{section.rangeLabel}}</div>
+                                            </div>
+                                            <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{{section.hours.length}} 小时刻度</span>
+                                        </div>
+                                        <div class="calendar-grid-scroll">
+                                            <div class="calendar-scheduler-grid">
+                                                <div class="calendar-time-head">时间</div>
+                                                <div v-for="day in dongleWeekDays" :key="section.key + '-head-' + day.key" class="calendar-day-head">
                                                     <div class="flex items-center justify-between gap-2">
                                                         <div>
                                                             <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{{day.weekday}}</div>
@@ -1840,30 +1910,28 @@
                                                         </div>
                                                         <span class="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600">{{formatPercent(day.utilization)}}</span>
                                                     </div>
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr>
-                                                <td v-for="day in dongleWeekDays" :key="day.key + '-body'">
-                                                    <div class="progress-track mb-3 h-1.5">
+                                                    <div class="progress-track mt-3 h-1.5">
                                                         <div class="progress-fill h-full" :style="{ width: Math.min(day.utilization, 100) + '%' }"></div>
                                                     </div>
-                                                    <div class="space-y-2">
-                                                        <div v-for="item in day.reservations" :key="day.key + '-' + item.id" class="calendar-event px-3 py-2">
-                                                            <div class="text-xs font-semibold text-slate-900">{{item.calendar_time}}</div>
-                                                            <div class="mt-1 truncate text-sm font-medium text-slate-700">{{item.user_name}}</div>
-                                                            <div v-if="item.project" class="mt-1 truncate text-xs text-slate-500">{{item.project}}</div>
-                                                            <div class="mt-1 text-[11px] text-slate-400">{{formatHours(item.clipped_hours)}} h</div>
-                                                        </div>
-                                                        <div v-if="day.reservations.length === 0" class="calendar-empty px-3 py-8 text-center text-xs text-slate-400">
-                                                            空闲
-                                                        </div>
+                                                </div>
+                                                <div class="calendar-time-rail">
+                                                    <div v-for="hour in section.hours" :key="section.key + '-time-' + hour" class="calendar-time-slot">
+                                                        {{formatHourRange(hour)}}
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                                </div>
+                                                <div v-for="day in dongleWeekDays" :key="section.key + '-rail-' + day.key" class="calendar-day-rail">
+                                                    <div v-for="hour in section.hours" :key="section.key + '-' + day.key + '-' + hour" class="calendar-hour-slot"></div>
+                                                    <div v-for="item in calendarItemsForSection(day, section)" :key="section.key + '-' + day.key + '-' + item.id" class="calendar-event" :style="calendarEventStyle(item, section)">
+                                                        <div class="text-xs font-semibold text-slate-900">{{item.calendar_time}}</div>
+                                                        <div class="mt-1 truncate text-sm font-medium text-slate-700">{{item.user_name}}</div>
+                                                        <div v-if="item.project" class="mt-1 truncate text-xs text-slate-500">{{item.project}}</div>
+                                                        <div class="mt-1 text-[11px] text-slate-500">{{formatHours(item.clipped_hours)}} h</div>
+                                                    </div>
+                                                    <div v-if="calendarItemsForSection(day, section).length === 0" class="calendar-empty">空闲</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2654,6 +2722,26 @@ createApp({
             if (!this.dongleWeekCapacityHours) return 0;
             return Math.min(100, (this.dongleWeekUsageHours / this.dongleWeekCapacityHours) * 100);
         },
+        dongleCalendarSections() {
+            return [
+                {
+                    key: 'morning',
+                    label: '上午',
+                    rangeLabel: '00:00 - 12:00',
+                    startHour: 0,
+                    endHour: 12,
+                    hours: Array.from({ length: 12 }, (_, index) => index),
+                },
+                {
+                    key: 'afternoon',
+                    label: '下午',
+                    rangeLabel: '12:00 - 24:00',
+                    startHour: 12,
+                    endHour: 24,
+                    hours: Array.from({ length: 12 }, (_, index) => index + 12),
+                },
+            ];
+        },
         dongleWeekDays() {
             return Array.from({ length: 7 }, (_, index) => {
                 const start = this.addDays(this.dongleWeekStartDate, index);
@@ -2673,6 +2761,8 @@ createApp({
                 const usageHours = reservations.reduce((total, item) => total + item.clipped_hours, 0);
                 return {
                     key: this.dateKey(start),
+                    start,
+                    end,
                     weekday: this.weekdayLabel(start),
                     dateLabel: this.formatDateShort(start),
                     utilization: Math.min(100, (usageHours / 24) * 100),
@@ -3044,6 +3134,49 @@ createApp({
             const end = this.parseDateTime(item.end_at);
             if (!start || !end) return false;
             return start < rangeEnd && end > rangeStart;
+        },
+        formatHourRange(hour) {
+            const pad = value => String(value).padStart(2, '0');
+            const end = hour + 1;
+            return `${pad(hour)}:00-${end === 24 ? '24' : pad(end)}:00`;
+        },
+        calendarSectionRange(day, section) {
+            const dayStart = day && day.start ? new Date(day.start) : this.parseDateTime(`${day.key} 00:00:00`);
+            if (!dayStart || Number.isNaN(dayStart.getTime())) return null;
+            const start = new Date(dayStart);
+            start.setHours(section.startHour, 0, 0, 0);
+            const end = new Date(dayStart);
+            end.setHours(section.endHour, 0, 0, 0);
+            return { start, end };
+        },
+        calendarItemsForSection(day, section) {
+            const range = this.calendarSectionRange(day, section);
+            if (!range) return [];
+            return (day.reservations || [])
+                .filter(item => this.reservationOverlapsRange(item, range.start, range.end))
+                .map(item => {
+                    const start = this.parseDateTime(item.start_at);
+                    const end = this.parseDateTime(item.end_at);
+                    const clippedStart = new Date(Math.max(start.getTime(), range.start.getTime()));
+                    const clippedEnd = new Date(Math.min(end.getTime(), range.end.getTime()));
+                    const clippedHours = Math.max(0, (clippedEnd - clippedStart) / (1000 * 60 * 60));
+                    return {
+                        ...item,
+                        calendar_time: this.formatReservationTimeInRange(item, range.start, range.end),
+                        clipped_hours: clippedHours,
+                        calendar_offset_hours: Math.max(0, (clippedStart - range.start) / (1000 * 60 * 60)),
+                    };
+                })
+                .filter(item => item.clipped_hours > 0)
+                .sort((a, b) => (a.calendar_offset_hours || 0) - (b.calendar_offset_hours || 0));
+        },
+        calendarEventStyle(item) {
+            const offset = Math.max(0, Number(item.calendar_offset_hours || 0));
+            const duration = Math.max(0.5, Number(item.clipped_hours || 0));
+            return {
+                top: `calc(${offset} * var(--calendar-hour-height) + 0.18rem)`,
+                height: `calc(${duration} * var(--calendar-hour-height) - 0.36rem)`,
+            };
         },
         clippedReservationHours(item, rangeStart, rangeEnd) {
             const start = this.parseDateTime(item.start_at);
