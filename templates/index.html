@@ -1645,6 +1645,121 @@
             color: #49616b;
         }
 
+        .calendar-panel .mt-5.space-y-4 {
+            gap: 0.75rem !important;
+        }
+
+        .calendar-section {
+            border-radius: 12px;
+            box-shadow: 0 1px 0 rgba(16, 32, 39, 0.035);
+        }
+
+        .calendar-section-bar {
+            min-height: 3.6rem;
+            padding: 0.55rem 0.85rem;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .calendar-section-bar .text-sm {
+            font-size: 0.9rem;
+        }
+
+        .calendar-section-bar .rounded-full {
+            padding: 0.28rem 0.65rem !important;
+        }
+
+        .calendar-section-bar::-webkit-details-marker {
+            display: none;
+        }
+
+        .calendar-section-bar::after {
+            content: "展开";
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: #ffffff;
+            padding: 0.24rem 0.55rem;
+            color: var(--muted);
+            font-size: 0.7rem;
+            font-weight: 800;
+        }
+
+        .calendar-section[open] .calendar-section-bar {
+            border-bottom: 1px solid var(--line);
+        }
+
+        .calendar-section[open] .calendar-section-bar::after {
+            content: "收起";
+        }
+
+        .calendar-scheduler-grid {
+            --calendar-hour-height: 1.85rem;
+            grid-template-columns: 4.85rem repeat(7, minmax(7.4rem, 1fr));
+            min-width: 900px;
+            font-size: 0.78rem;
+        }
+
+        .calendar-time-head,
+        .calendar-day-head {
+            min-height: 3.35rem;
+            padding: 0.55rem 0.6rem;
+        }
+
+        .calendar-day-head .text-xs {
+            font-size: 0.68rem;
+        }
+
+        .calendar-day-head .font-semibold.text-slate-900 {
+            font-size: 0.9rem;
+        }
+
+        .calendar-day-head .rounded-full {
+            padding: 0.16rem 0.48rem !important;
+            font-size: 0.68rem !important;
+        }
+
+        .calendar-day-head .progress-track {
+            margin-top: 0.45rem !important;
+            height: 0.28rem !important;
+        }
+
+        .calendar-time-slot {
+            align-items: center;
+            padding: 0.18rem 0.45rem;
+            font-size: 0.66rem;
+            font-weight: 700;
+            line-height: 1.05;
+        }
+
+        .calendar-hour-slot {
+            border-bottom-color: #edf5f7;
+        }
+
+        .calendar-event {
+            left: 0.35rem;
+            right: 0.35rem;
+            padding: 0.38rem 0.55rem;
+            border-radius: 10px;
+            box-shadow: inset 3px 0 0 var(--primary), 0 4px 10px rgba(15, 125, 138, 0.08);
+        }
+
+        .calendar-event .text-sm {
+            margin-top: 0.15rem !important;
+            font-size: 0.78rem;
+            line-height: 1.1;
+        }
+
+        .calendar-event .text-xs,
+        .calendar-event .text-\[11px\] {
+            margin-top: 0.15rem !important;
+            font-size: 0.68rem !important;
+            line-height: 1.1;
+        }
+
+        .calendar-empty {
+            display: none;
+        }
+
         @media (max-width: 1180px) {
             .page-header-grid,
             .command-bar,
@@ -2430,14 +2545,17 @@
                                     </div>
                                 </div>
                                 <div class="mt-5 space-y-4">
-                                    <div v-for="section in dongleCalendarSections" :key="section.key" class="calendar-section">
-                                        <div class="calendar-section-bar">
+                                    <details v-for="section in dongleCalendarSections" :key="section.key" class="calendar-section" :open="calendarSectionHasItems(section)">
+                                        <summary class="calendar-section-bar">
                                             <div>
                                                 <div class="text-sm font-semibold text-slate-900">{{section.label}}</div>
                                                 <div class="mt-0.5 text-xs text-slate-500">{{section.rangeLabel}}</div>
                                             </div>
-                                            <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{{section.hours.length}} 小时刻度</span>
-                                        </div>
+                                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                                <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{{calendarSectionReservationCount(section)}} 个时段</span>
+                                                <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{{section.hours.length}} 小时刻度</span>
+                                            </div>
+                                        </summary>
                                         <div class="calendar-grid-scroll">
                                             <div class="calendar-scheduler-grid">
                                                 <div class="calendar-time-head">时间</div>
@@ -2470,7 +2588,7 @@
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    </details>
                                 </div>
                             </div>
 
@@ -3687,6 +3805,14 @@ createApp({
             const end = new Date(dayStart);
             end.setHours(section.endHour, 0, 0, 0);
             return { start, end };
+        },
+        calendarSectionHasItems(section) {
+            return this.dongleWeekDays.some(day => this.calendarItemsForSection(day, section).length > 0);
+        },
+        calendarSectionReservationCount(section) {
+            return this.dongleWeekDays.reduce((total, day) => {
+                return total + this.calendarItemsForSection(day, section).length;
+            }, 0);
         },
         calendarItemsForSection(day, section) {
             const range = this.calendarSectionRange(day, section);
