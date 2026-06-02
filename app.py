@@ -50,7 +50,7 @@ EXPENSE_BUCKETS = [
     {"key": "instrument", "label": "仪器"},
     {"key": "proxy", "label": "代购"},
 ]
-DONGLE_RESOURCE_NAME = "代谢组数据处理密码狗"
+DONGLE_RESOURCE_NAME = "代谢组数据处理服务器（密码狗固定连接）"
 DONGLE_ACTIVE_STATUS = "已预约"
 DONGLE_CANCELLED_STATUS = "已取消"
 NON_STANDARD_IMAGE_EXTENSIONS = {"avif", "heic", "heif", "bmp", "tiff", "tif", "svg"}
@@ -959,7 +959,7 @@ def get_mail_config():
         "username": username,
         "password": os.environ.get("SMTP_PASSWORD") or os.environ.get("MAIL_PASSWORD"),
         "from_email": from_email,
-        "from_name": os.environ.get("SMTP_FROM_NAME") or os.environ.get("MAIL_FROM_NAME") or "实验室试剂管理系统",
+        "from_name": os.environ.get("SMTP_FROM_NAME") or os.environ.get("MAIL_FROM_NAME") or "实验室资源管理系统",
         "use_ssl": str(os.environ.get("SMTP_USE_SSL") or "").lower() in {"1", "true", "yes", "on"},
         "use_tls": str(os.environ.get("SMTP_USE_TLS") or "true").lower() in {"1", "true", "yes", "on"},
     }
@@ -1047,7 +1047,7 @@ def notify_purchase_approvers(purchase):
         "",
         *purchase_summary_lines(purchase),
         "",
-        "请打开试剂管理系统进入“采购审批”处理。",
+        "请打开实验室资源管理系统进入“采购审批”处理。",
     ]
     if link:
         body_lines.extend(["", f"系统地址：{link}"])
@@ -2037,6 +2037,6 @@ if __name__ == "__main__":
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8080"))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"
-    print("🧪 实验室试剂管理系统启动中...")
+    print("🧪 实验室资源管理系统启动中...")
     print(f"📍 访问地址: http://{host}:{port}")
     app.run(host=host, port=port, debug=debug)
