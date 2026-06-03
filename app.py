@@ -48,7 +48,7 @@ EXPENSE_BUCKETS = [
     {"key": "reagent", "label": "试剂"},
     {"key": "consumable", "label": "耗材"},
     {"key": "instrument", "label": "仪器"},
-    {"key": "proxy", "label": "代购"},
+    {"key": "proxy", "label": "代付/代购"},
 ]
 DONGLE_RESOURCE_NAME = "代谢组数据处理服务器（密码狗固定连接）"
 DONGLE_ACTIVE_STATUS = "已预约"
@@ -131,6 +131,11 @@ class PurchaseRequest(Base):
 
     id = Column(String, primary_key=True)
     reagent_name = Column(String, nullable=False)
+    request_type = Column(String, default="试剂")
+    purchase_channel = Column(String)
+    purchase_url = Column(String)
+    order_number = Column(String)
+    requires_stock_in = Column(Integer, default=1)
     name_en = Column(String)
     cas_number = Column(String)
     catalog_number = Column(String)
@@ -419,6 +424,11 @@ def init_db():
         ensure_column("purchase_requests", "requester_notified_at", "TEXT")
         ensure_column("purchase_requests", "approver_email_error", "TEXT")
         ensure_column("purchase_requests", "requester_email_error", "TEXT")
+        ensure_column("purchase_requests", "request_type", "TEXT DEFAULT '试剂'")
+        ensure_column("purchase_requests", "purchase_channel", "TEXT")
+        ensure_column("purchase_requests", "purchase_url", "TEXT")
+        ensure_column("purchase_requests", "order_number", "TEXT")
+        ensure_column("purchase_requests", "requires_stock_in", "INTEGER DEFAULT 1")
     else:
         ensure_column("reagents", "low_stock_threshold", "DOUBLE PRECISION DEFAULT 1")
         ensure_column("reagents", "owner", "TEXT")
@@ -431,6 +441,11 @@ def init_db():
         ensure_column("purchase_requests", "requester_notified_at", "TEXT")
         ensure_column("purchase_requests", "approver_email_error", "TEXT")
         ensure_column("purchase_requests", "requester_email_error", "TEXT")
+        ensure_column("purchase_requests", "request_type", "TEXT DEFAULT '试剂'")
+        ensure_column("purchase_requests", "purchase_channel", "TEXT")
+        ensure_column("purchase_requests", "purchase_url", "TEXT")
+        ensure_column("purchase_requests", "order_number", "TEXT")
+        ensure_column("purchase_requests", "requires_stock_in", "INTEGER DEFAULT 1")
 
     session = SessionLocal()
     try:
@@ -682,11 +697,33 @@ def safe_float(value, default=0.0):
         return default
 
 
+def stock_in_default_for_request_type(request_type):
+    return str(request_type or "").strip() in {"试剂", "耗材", "实验耗材"}
+
+
+def parse_stock_in_flag(value, request_type="试剂"):
+    if value is None or value == "":
+        return 1 if stock_in_default_for_request_type(request_type) else 0
+    if isinstance(value, bool):
+        return 1 if value else 0
+    text = str(value).strip().lower()
+    return 0 if text in {"0", "false", "no", "off", "否", "不需要"} else 1
+
+
+def purchase_needs_stock_in(purchase):
+    value = getattr(purchase, "requires_stock_in", 1)
+    if value is None:
+        return True
+    return bool(value)
+
+
 def expense_bucket_for_item(item):
     text = " ".join(
         str(item.get(field) or "").lower()
         for field in [
             "category",
+            "request_type",
+            "purchase_channel",
             "name",
             "reagent_name",
             "name_en",
@@ -696,7 +733,7 @@ def expense_bucket_for_item(item):
             "notes",
         ]
     )
-    if "代购" in text or "proxy" in text:
+    if any(keyword in text for keyword in ["代购", "代付", "淘宝", "proxy"]):
         return "proxy"
     if any(keyword in text for keyword in ["仪器", "设备", "耗仪", "instrument", "equipment", "apparatus"]):
         return "instrument"
@@ -821,6 +858,8 @@ def serialize_usage_row(record, reagent_name, stock_unit):
 
 
 def find_purchase_stock_matches(session, purchase, limit=3):
+    if not purchase_needs_stock_in(purchase):
+        return []
     filters = []
     if purchase.catalog_number:
         filters.append(Reagent.catalog_number == purchase.catalog_number)
@@ -860,6 +899,8 @@ def find_purchase_stock_matches(session, purchase, limit=3):
 
 def serialize_purchase_request(row, session=None):
     data = model_to_dict(row)
+    data["request_type"] = data.get("request_type") or "试剂"
+    data["requires_stock_in"] = purchase_needs_stock_in(row)
     data["quantity"] = float(data["quantity"] or 0)
     data["received_quantity"] = None if data["received_quantity"] is None else float(data["received_quantity"])
     data["accepted_quantity"] = None if data["accepted_quantity"] is None else float(data["accepted_quantity"])
@@ -1022,14 +1063,19 @@ def send_mail(subject, recipients, body, reply_to=None):
 def purchase_summary_lines(purchase):
     return [
         f"申请编号：{purchase.id}",
-        f"试剂名称：{purchase.reagent_name}",
+        f"申请事项：{purchase.reagent_name}",
+        f"申请类型：{purchase.request_type or '试剂'}",
+        f"采购渠道：{purchase.purchase_channel or '-'}",
+        f"商品/订单链接：{purchase.purchase_url or '-'}",
+        f"订单号/付款单号：{purchase.order_number or '-'}",
+        f"是否需要入库：{'是' if purchase_needs_stock_in(purchase) else '否'}",
         f"英文名称：{purchase.name_en or '-'}",
         f"CAS号：{purchase.cas_number or '-'}",
         f"品牌/货号：{purchase.brand or '-'} / {purchase.catalog_number or '-'}",
         f"规格：{purchase.specification or '-'}",
         f"数量：{purchase.quantity or 0} {purchase.unit or ''}".strip(),
-        f"供应商：{purchase.supplier or '-'}",
-        f"预计价格：{purchase.expected_price if purchase.expected_price is not None else '-'}",
+        f"供应商/店铺：{purchase.supplier or '-'}",
+        f"预计金额：{purchase.expected_price if purchase.expected_price is not None else '-'}",
         f"期望到货：{purchase.needed_by or '-'}",
         f"申请人：{purchase.requester}",
         f"申请人邮箱：{purchase.requester_email or '-'}",
@@ -1043,7 +1089,7 @@ def notify_purchase_approvers(purchase):
     base_url = get_app_base_url()
     link = f"{base_url}/" if base_url else ""
     body_lines = [
-        "有新的试剂采购申请需要审批。",
+        "有新的采购/代付申请需要审批。",
         "",
         *purchase_summary_lines(purchase),
         "",
@@ -1052,7 +1098,7 @@ def notify_purchase_approvers(purchase):
     if link:
         body_lines.extend(["", f"系统地址：{link}"])
     return send_mail(
-        subject=f"[试剂采购审批] {purchase.reagent_name} - {purchase.requester}",
+        subject=f"[采购审批] {purchase.reagent_name} - {purchase.requester}",
         recipients=approver_emails,
         body="\n".join(body_lines),
         reply_to=purchase.requester_email,
@@ -1062,7 +1108,7 @@ def notify_purchase_approvers(purchase):
 def notify_purchase_requester(purchase, approved):
     decision = "已批准" if approved else "已驳回"
     body_lines = [
-        f"你的试剂采购申请{decision}。",
+        f"你的采购/代付申请{decision}。",
         "",
         *purchase_summary_lines(purchase),
         "",
@@ -1074,7 +1120,7 @@ def notify_purchase_requester(purchase, approved):
     if base_url:
         body_lines.extend(["", f"系统地址：{base_url}/"])
     return send_mail(
-        subject=f"[试剂采购{decision}] {purchase.reagent_name}",
+        subject=f"[采购申请{decision}] {purchase.reagent_name}",
         recipients=[purchase.requester_email],
         body="\n".join(body_lines),
     )
@@ -1487,6 +1533,10 @@ def get_purchases():
                     PurchaseRequest.reagent_name.ilike(term),
                     PurchaseRequest.catalog_number.ilike(term),
                     PurchaseRequest.brand.ilike(term),
+                    PurchaseRequest.request_type.ilike(term),
+                    PurchaseRequest.purchase_channel.ilike(term),
+                    PurchaseRequest.order_number.ilike(term),
+                    PurchaseRequest.supplier.ilike(term),
                     PurchaseRequest.requester.ilike(term),
                     PurchaseRequest.requester_email.ilike(term),
                 )
@@ -1523,11 +1573,12 @@ def get_mail_config_status():
 @app.route("/api/purchases", methods=["POST"])
 def add_purchase_request():
     data = request.json or {}
-    reagent_name = str(data.get("reagent_name") or data.get("name") or "").strip()
+    request_type = str(data.get("request_type") or "试剂").strip() or "试剂"
+    reagent_name = str(data.get("reagent_name") or data.get("item_name") or data.get("name") or "").strip()
     requester = str(data.get("requester") or "").strip()
     requester_email = str(data.get("requester_email") or "").strip()
     if not reagent_name:
-        return jsonify({"error": "请填写试剂名称"}), 400
+        return jsonify({"error": "请填写申请事项/物品名称"}), 400
     if not requester:
         return jsonify({"error": "请填写申请人"}), 400
     if not requester_email:
@@ -1542,6 +1593,7 @@ def add_purchase_request():
     if quantity <= 0:
         return jsonify({"error": "数量必须大于 0"}), 400
 
+    requires_stock_in = parse_stock_in_flag(data.get("requires_stock_in"), request_type)
     normalized = normalize_reagent_payload({**data, "name": reagent_name})
     request_id = str(uuid.uuid4())[:8]
     session = SessionLocal()
@@ -1549,6 +1601,11 @@ def add_purchase_request():
         purchase = PurchaseRequest(
             id=request_id,
             reagent_name=reagent_name,
+            request_type=request_type,
+            purchase_channel=data.get("purchase_channel"),
+            purchase_url=data.get("purchase_url") or data.get("url"),
+            order_number=data.get("order_number"),
+            requires_stock_in=requires_stock_in,
             name_en=data.get("name_en"),
             cas_number=data.get("cas_number"),
             catalog_number=data.get("catalog_number"),
@@ -1605,7 +1662,11 @@ def approve_purchase_request(request_id):
         if purchase.status != "待审批":
             return jsonify({"error": "只有待审批申请可以审批"}), 400
 
-        purchase.status = "已批准"
+        if purchase_needs_stock_in(purchase):
+            purchase.status = "已批准"
+        else:
+            purchase.status = "已入库"
+            purchase.stocked_at = now_text()
         purchase.approver = approver
         purchase.approver_email = approver_email or purchase.approver_email
         purchase.approval_notes = data.get("approval_notes")
@@ -1687,6 +1748,8 @@ def receive_purchase_request(request_id):
         purchase = session.get(PurchaseRequest, request_id)
         if not purchase:
             return jsonify({"error": "采购申请不存在"}), 404
+        if not purchase_needs_stock_in(purchase):
+            return jsonify({"error": "该申请不需要验货入库，批准后会直接完成"}), 400
         if purchase.status != "已批准":
             return jsonify({"error": "只有已批准申请可以验货"}), 400
 
@@ -1716,6 +1779,8 @@ def stock_in_purchase_request(request_id):
         purchase = session.get(PurchaseRequest, request_id)
         if not purchase:
             return jsonify({"error": "采购申请不存在"}), 404
+        if not purchase_needs_stock_in(purchase):
+            return jsonify({"error": "该申请不需要入库"}), 400
         if purchase.status != "待入库":
             return jsonify({"error": "只有待入库申请可以入库"}), 400
 

@@ -2035,7 +2035,7 @@
                     </div>
                     <div class="command-bar">
                         <div class="command-search">
-                            <input v-model="searchQuery" @input="debounceSearch" placeholder="搜索试剂名称、CAS号、货号、归属人...">
+                            <input v-model="searchQuery" @input="debounceSearch" placeholder="搜索名称、CAS、货号、渠道、店铺或订单号...">
                             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                             </svg>
@@ -2189,7 +2189,7 @@
                             <div>
                                 <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Expense Overview</div>
                                 <h3 class="mt-2 text-xl font-bold text-slate-900">金额消费统计</h3>
-                                <p class="mt-1 text-sm text-slate-500">按试剂、耗材、仪器和代购汇总库存价值与待处理采购预算。</p>
+                                <p class="mt-1 text-sm text-slate-500">按试剂、耗材、仪器和代付/代购汇总库存价值与待处理采购预算。</p>
                             </div>
                             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
                                 <div class="text-xs text-slate-500">总金额</div>
@@ -2245,7 +2245,7 @@
                                 <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.ready_to_stock || 0}}</div>
                             </button>
                             <button @click="openProcurementView('已入库')" class="flow-card px-4 py-4 text-left hover:bg-white">
-                                <div class="text-sm text-slate-500">已入库</div>
+                                <div class="text-sm text-slate-500">已完成</div>
                                 <div class="mt-2 text-2xl font-bold text-slate-900">{{purchaseStats.stocked || 0}}</div>
                             </button>
                         </div>
@@ -2420,8 +2420,8 @@
                             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                                 <div>
                                     <div class="text-xs uppercase tracking-[0.22em] text-slate-400">Purchase Approval</div>
-                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">采购审批工作台</h3>
-                                    <p class="mt-1 text-sm text-slate-500">提交采购申请，完成审批、验货和入库，合格数量会自动进入库存。</p>
+                                    <h3 class="mt-2 text-2xl font-bold text-slate-900">采购与代付审批工作台</h3>
+                                    <p class="mt-1 text-sm text-slate-500">统一处理淘宝代付、试剂、耗材和服务采购；需要入库的项目再进入验货和库存流程。</p>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
                                     <button @click="openPurchaseModal()" class="btn-primary">新建申请</button>
@@ -2450,24 +2450,35 @@
                                     <div v-for="item in column.items" :key="item.id" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                                         <div class="flex items-start justify-between gap-3">
                                             <div class="min-w-0">
-                                                <div class="font-semibold text-slate-900">{{item.reagent_name}}</div>
-                                                <div class="mt-1 text-xs text-slate-500">{{item.brand || '未填品牌'}} · {{item.catalog_number || '未填货号'}}</div>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <div class="font-semibold text-slate-900">{{item.reagent_name}}</div>
+                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">{{item.request_type || '试剂'}}</span>
+                                                </div>
+                                                <div class="mt-1 text-xs text-slate-500">{{item.purchase_channel || '未填渠道'}} · {{item.brand || item.supplier || '未填店铺/供应商'}}</div>
                                             </div>
-                                            <span class="badge" :class="purchaseStatusClass(item.status)">{{item.status}}</span>
+                                            <span class="badge" :class="purchaseStatusClass(item.status)">{{purchaseStatusLabel(item.status, item)}}</span>
                                         </div>
                                         <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                                             <div>申请: {{item.requester}}</div>
                                             <div class="truncate" :title="item.requester_email || ''">邮箱: {{item.requester_email || '-'}}</div>
                                             <div>数量: {{formatNumber(item.quantity)}} {{item.unit || ''}}</div>
-                                            <div>供应商: {{item.supplier || '-'}}</div>
-                                            <div>预算: {{item.expected_price ? '¥' + item.expected_price : '-'}}</div>
+                                            <div>渠道: {{item.purchase_channel || '-'}}</div>
+                                            <div>店铺/供应商: {{item.supplier || '-'}}</div>
+                                            <div>金额: {{item.expected_price ? '¥' + item.expected_price : '-'}}</div>
+                                            <div v-if="item.order_number" class="truncate" :title="item.order_number">单号: {{item.order_number}}</div>
                                             <div v-if="item.approver" class="truncate" :title="item.approver_email || ''">审批: {{item.approver}}</div>
                                         </div>
-                                        <div v-if="item.stock_available" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                                        <a v-if="item.purchase_url" :href="item.purchase_url" target="_blank" rel="noopener" class="mt-3 block truncate rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100" :title="item.purchase_url">
+                                            商品/订单链接：{{item.purchase_url}}
+                                        </a>
+                                        <div v-if="item.requires_stock_in && item.stock_available" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                                             库存仍有：{{stockMatchSummary(item.stock_matches)}}。审批前建议确认是否确需采购。
                                         </div>
                                         <div class="mt-3 flex flex-wrap gap-2 text-[11px]">
                                             <span v-if="webApprovalMode" class="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-600">网页审批模式</span>
+                                            <span class="rounded-full px-2.5 py-1 font-medium" :class="item.requires_stock_in ? 'bg-emerald-50 text-emerald-700' : 'bg-indigo-50 text-indigo-700'">
+                                                {{item.requires_stock_in ? '需验货入库' : '批准后完成'}}
+                                            </span>
                                             <span v-if="!webApprovalMode && item.approver_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知审批人</span>
                                             <span v-else-if="!webApprovalMode && item.approver_email_error" class="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700" :title="item.approver_email_error">审批邮件未发出</span>
                                             <span v-if="!webApprovalMode && item.requester_notified_at" class="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">已通知申请人</span>
@@ -2478,8 +2489,8 @@
                                         <div class="mt-4 flex flex-wrap gap-2">
                                             <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'approve')" class="rounded-xl bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-900">批准</button>
                                             <button v-if="item.status === '待审批'" @click="openApprovalModal(item, 'reject')" class="rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">驳回</button>
-                                            <button v-if="item.status === '已批准'" @click="openReceiveModal(item)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">验货</button>
-                                            <button v-if="item.status === '待入库'" @click="openStockInModal(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
+                                            <button v-if="item.status === '已批准' && item.requires_stock_in" @click="openReceiveModal(item)" class="rounded-xl bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100">验货</button>
+                                            <button v-if="item.status === '待入库' && item.requires_stock_in" @click="openStockInModal(item)" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100">入库</button>
                                             <button v-if="item.reagent_id" @click="openReagentView('all'); searchQuery=item.reagent_name; loadReagents()" class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200">看库存</button>
                                         </div>
                                     </div>
@@ -2810,7 +2821,7 @@
                         <div class="flex gap-2">
                             <input v-model.number="form.quantity" type="number" min="0" step="0.5" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="0">
                             <select v-model="form.unit" class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
-                                <option>瓶</option><option>盒</option><option>袋</option><option>支</option><option>个</option><option>包</option><option>kg</option><option>g</option><option>mL</option><option>L</option>
+                                <option>瓶</option><option>盒</option><option>袋</option><option>支</option><option>个</option><option>包</option><option>单</option><option>kg</option><option>g</option><option>mL</option><option>L</option>
                             </select>
                         </div>
                     </div>
@@ -2879,19 +2890,43 @@
 
     <!-- Purchase Request Modal -->
     <div v-if="showPurchaseModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4" @click.self="showPurchaseModal=false">
-        <div class="modal-frame w-full max-w-2xl rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl">
+        <div class="modal-frame w-full max-w-4xl rounded-[1.75rem] border border-white/60 bg-white/95 shadow-2xl">
             <div class="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-800">新建采购申请</h3>
-                    <p class="mt-1 text-sm text-slate-500">提交后进入待审批队列，批准后可做验货和入库。</p>
+                    <h3 class="text-lg font-bold text-gray-800">新建采购/代付申请</h3>
+                    <p class="mt-1 text-sm text-slate-500">试剂和耗材可继续验货入库；代付、服务和设备类批准后直接完成。</p>
                 </div>
                 <button @click="showPurchaseModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <div class="modal-scroll p-6 space-y-4 bg-slate-50/55">
-                <div class="grid grid-cols-2 gap-4">
+                <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">申请类型 *</label>
+                            <select v-model="purchaseForm.request_type" @change="syncPurchaseType()" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                <option v-for="type in purchaseRequestTypes" :key="type" :value="type">{{type}}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-1">采购渠道 *</label>
+                            <select v-model="purchaseForm.purchase_channel" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                                <option value="">请选择渠道</option>
+                                <option v-for="channel in purchaseChannels" :key="channel" :value="channel">{{channel}}</option>
+                            </select>
+                        </div>
+                        <label class="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                            <span>
+                                <span class="block font-semibold text-slate-900">需要验货入库</span>
+                                <span class="text-xs text-slate-500">关闭后批准即完成</span>
+                            </span>
+                            <input v-model="purchaseForm.requires_stock_in" type="checkbox" class="h-5 w-5 rounded border-slate-300 text-black focus:ring-black">
+                        </label>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">试剂名称 *</label>
-                        <input v-model="purchaseForm.reagent_name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：胎牛血清">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">申请事项/物品名称 *</label>
+                        <input v-model="purchaseForm.reagent_name" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="如：胎牛血清 / 枪头 / 淘宝订单代付">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">申请人 *</label>
@@ -2900,6 +2935,14 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">申请人邮箱 *</label>
                         <input v-model.trim="purchaseForm.requester_email" type="email" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="name@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">商品/订单链接</label>
+                        <input v-model.trim="purchaseForm.purchase_url" type="url" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="https://...">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">订单号/付款单号</label>
+                        <input v-model.trim="purchaseForm.order_number" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="淘宝订单号、校内单号等">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">品牌</label>
@@ -2923,28 +2966,28 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">供应商</label>
-                        <input v-model="purchaseForm.supplier" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="供应商名称">
+                        <label class="block text-sm font-medium text-gray-600 mb-1">供应商/店铺</label>
+                        <input v-model="purchaseForm.supplier" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="供应商、店铺或付款对象">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-600 mb-1">预计单价/总价 (元)</label>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">预计金额/代付金额 (元)</label>
                         <input v-model.number="purchaseForm.expected_price" type="number" min="0" step="0.01" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-600 mb-1">期望到货日期</label>
                         <input v-model="purchaseForm.needed_by" type="date" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
                     </div>
-                    <div>
+                    <div v-if="purchaseForm.requires_stock_in">
                         <label class="block text-sm font-medium text-gray-600 mb-1">分类</label>
                         <select v-model="purchaseForm.category" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
                             <option v-for="cat in categories" :key="cat.id" :value="cat.name">{{cat.name}}</option>
                         </select>
                     </div>
-                    <div>
+                    <div v-if="purchaseForm.requires_stock_in">
                         <label class="block text-sm font-medium text-gray-600 mb-1">存储温度</label>
                         <input v-model="purchaseForm.storage_temp" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="室温 / 2-8°C / -20°C">
                     </div>
-                    <div>
+                    <div v-if="purchaseForm.requires_stock_in">
                         <label class="block text-sm font-medium text-gray-600 mb-1">危险等级</label>
                         <select v-model="purchaseForm.hazard_level" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none">
                             <option>普通</option><option>易燃</option><option>腐蚀</option><option>有毒</option><option>剧毒</option><option>易爆</option>
@@ -2952,13 +2995,13 @@
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-600 mb-1">采购原因</label>
-                    <textarea v-model="purchaseForm.reason" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="库存不足、项目实验需要、替换过期批次等"></textarea>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">申请说明</label>
+                    <textarea v-model="purchaseForm.reason" rows="3" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none" placeholder="购买原因、代付说明、项目用途或特殊要求"></textarea>
                 </div>
             </div>
             <div class="modal-actions p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-3">
                 <button @click="showPurchaseModal=false" class="btn-secondary">取消</button>
-                <button @click="savePurchaseRequest()" class="btn-primary" :disabled="!purchaseForm.reagent_name || !purchaseForm.requester || !purchaseForm.requester_email">提交申请</button>
+                <button @click="savePurchaseRequest()" class="btn-primary" :disabled="!purchaseForm.reagent_name || !purchaseForm.requester || !purchaseForm.requester_email || !purchaseForm.purchase_channel">提交申请</button>
             </div>
         </div>
     </div>
@@ -2969,23 +3012,32 @@
             <div class="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
                     <h3 class="text-lg font-bold text-gray-800">{{approvalForm.decision === 'approve' ? '手动批准采购申请' : '手动驳回采购申请'}}</h3>
-                    <p class="mt-1 text-sm text-slate-500">{{approvalForm.reagent_name}} · {{formatNumber(approvalForm.quantity)}} {{approvalForm.unit}}</p>
+                    <p class="mt-1 text-sm text-slate-500">{{approvalForm.request_type || '试剂'}} · {{approvalForm.reagent_name}} · {{formatNumber(approvalForm.quantity)}} {{approvalForm.unit}}</p>
                 </div>
                 <button @click="showApprovalModal=false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <div class="modal-scroll p-6 space-y-4 bg-slate-50/55">
                 <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
                     申请人：{{approvalForm.requester || '-'}}<br>
-                    邮箱：{{approvalForm.requester_email || '-'}}
+                    邮箱：{{approvalForm.requester_email || '-'}}<br>
+                    渠道：{{approvalForm.purchase_channel || '-'}}<br>
+                    店铺/供应商：{{approvalForm.supplier || '-'}}
                 </div>
-                <div v-if="approvalForm.stock_available" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <div v-if="approvalForm.purchase_url" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                    <a :href="approvalForm.purchase_url" target="_blank" rel="noopener" class="font-medium text-slate-700 hover:text-black break-all">{{approvalForm.purchase_url}}</a>
+                    <div v-if="approvalForm.order_number" class="mt-1 text-xs text-slate-500">订单号/付款单号：{{approvalForm.order_number}}</div>
+                </div>
+                <div v-if="approvalForm.requires_stock_in && approvalForm.stock_available" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     <div class="font-semibold text-amber-900">库存仍有余量</div>
-                    <div class="mt-1">系统匹配到库存中还有同类试剂，建议先核对现有库存再批准采购。</div>
+                    <div class="mt-1">系统匹配到库存中还有同类物品，建议先核对现有库存再批准采购。</div>
                     <div class="mt-2 space-y-1 text-xs">
                         <div v-for="match in approvalForm.stock_matches" :key="match.id">
                             {{match.name}}：{{formatRemainingAmount(match.quantity, match.unit, match.specification)}}，位置 {{match.storage_location || '未填写'}}
                         </div>
                     </div>
+                </div>
+                <div v-if="approvalForm.decision === 'approve' && !approvalForm.requires_stock_in" class="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                    这类申请不进入验货/入库，批准后会直接归档为完成。
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-600 mb-1">审批人 *</label>
@@ -3006,7 +3058,7 @@
             <div class="modal-actions p-6 border-t border-slate-100 bg-white flex items-center justify-end gap-3">
                 <button @click="showApprovalModal=false" class="btn-secondary">取消</button>
                 <button @click="submitApprovalDecision()" class="btn-primary" :class="approvalForm.decision === 'reject' ? 'bg-red-600 border-red-600 hover:bg-red-700' : ''" :disabled="!approvalForm.approver">
-                    {{approvalForm.decision === 'approve' ? (approvalForm.stock_available ? '仍然批准' : '确认批准') : '确认驳回'}}
+                    {{approvalForm.decision === 'approve' ? (approvalForm.requires_stock_in && approvalForm.stock_available ? '仍然批准' : '确认批准') : '确认驳回'}}
                 </button>
             </div>
         </div>
@@ -3244,6 +3296,8 @@ createApp({
             searchQuery: '',
             filterCategory: '',
             procurementFilter: '',
+            purchaseRequestTypes: ['淘宝代付', '试剂', '耗材', '服务/设备', '其他'],
+            purchaseChannels: ['淘宝', '京东', '1688', '官网', '经销商', '校内采购', '其他'],
             showReagentModal: false,
             showUseModal: false,
             showScanModal: false,
@@ -3293,7 +3347,7 @@ createApp({
         },
         viewSubtitle() {
             if (this.currentView === 'procurement') {
-                return '把采购申请、审批、验货和库存入库放在同一个流程里。';
+                return '把淘宝代付、试剂、耗材和服务采购放在同一个网页审批流程里。';
             }
             if (this.currentView === 'dongle') {
                 return '预约代谢组数据处理服务器使用时段；密码狗固定插在服务器上，不允许拔下。';
@@ -3306,7 +3360,7 @@ createApp({
                 { value: '待审批', label: '待审批', count: this.purchaseStats.pending_approval || 0 },
                 { value: '已批准', label: '待验货', count: this.purchaseStats.approved || 0 },
                 { value: '待入库', label: '待入库', count: this.purchaseStats.ready_to_stock || 0 },
-                { value: '已入库', label: '已入库', count: this.purchaseStats.stocked || 0 },
+                { value: '已入库', label: '完成', count: this.purchaseStats.stocked || 0 },
                 { value: '已驳回', label: '已驳回', count: this.purchaseStats.rejected || 0 },
             ];
         },
@@ -3433,7 +3487,7 @@ createApp({
                 { key: 'reagent', label: '试剂' },
                 { key: 'consumable', label: '耗材' },
                 { key: 'instrument', label: '仪器' },
-                { key: 'proxy', label: '代购' },
+                { key: 'proxy', label: '代付/代购' },
             ].map(bucket => ({
                 ...bucket,
                 amount: 0,
@@ -3629,6 +3683,11 @@ createApp({
         },
         emptyPurchaseForm() {
             return {
+                request_type: '试剂',
+                purchase_channel: '',
+                purchase_url: '',
+                order_number: '',
+                requires_stock_in: true,
                 reagent_name: '',
                 name_en: '',
                 cas_number: '',
@@ -3654,6 +3713,12 @@ createApp({
             return {
                 request_id: '',
                 reagent_name: '',
+                request_type: '试剂',
+                purchase_channel: '',
+                purchase_url: '',
+                order_number: '',
+                supplier: '',
+                requires_stock_in: true,
                 requester: '',
                 requester_email: '',
                 quantity: 0,
@@ -4246,6 +4311,12 @@ createApp({
                 ...this.emptyApprovalForm(),
                 request_id: item.id,
                 reagent_name: item.reagent_name,
+                request_type: item.request_type || '试剂',
+                purchase_channel: item.purchase_channel || '',
+                purchase_url: item.purchase_url || '',
+                order_number: item.order_number || '',
+                supplier: item.supplier || '',
+                requires_stock_in: item.requires_stock_in !== false,
                 requester: item.requester || '',
                 requester_email: item.requester_email || '',
                 quantity: Number(item.quantity || 0),
@@ -4302,6 +4373,29 @@ createApp({
             }
             return {};
         },
+        requestTypeNeedsStockIn(type) {
+            return ['试剂', '耗材', '实验耗材'].includes(String(type || '').trim());
+        },
+        syncPurchaseType() {
+            const type = this.purchaseForm.request_type || '试剂';
+            this.purchaseForm.requires_stock_in = this.requestTypeNeedsStockIn(type);
+            if (type === '淘宝代付') {
+                this.purchaseForm.purchase_channel = '淘宝';
+                this.purchaseForm.unit = '单';
+                this.purchaseForm.quantity = this.purchaseForm.quantity || 1;
+            } else if (type === '耗材') {
+                this.purchaseForm.category = '实验耗材';
+                if (!this.purchaseForm.unit || this.purchaseForm.unit === '瓶') {
+                    this.purchaseForm.unit = '盒';
+                }
+            } else if (type === '试剂') {
+                if (!this.purchaseForm.unit || this.purchaseForm.unit === '单') {
+                    this.purchaseForm.unit = '瓶';
+                }
+            } else if (!this.purchaseForm.requires_stock_in && (!this.purchaseForm.unit || this.purchaseForm.unit === '瓶')) {
+                this.purchaseForm.unit = '单';
+            }
+        },
         prepareFormPayload(form) {
             const payload = { ...form };
             if (payload.category === '-20°C冰箱' && !String(payload.storage_temp || '').trim()) {
@@ -4334,7 +4428,7 @@ createApp({
             }
         },
         async savePurchaseRequest() {
-            if (!this.purchaseForm.reagent_name || !this.purchaseForm.requester || !this.purchaseForm.requester_email) return;
+            if (!this.purchaseForm.reagent_name || !this.purchaseForm.requester || !this.purchaseForm.requester_email || !this.purchaseForm.purchase_channel) return;
             const payload = this.prepareFormPayload(this.purchaseForm);
             const res = await fetch('/api/purchases', {
                 method: 'POST',
@@ -4394,7 +4488,8 @@ createApp({
             this.showApprovalModal = false;
             const mailSent = data.requester_email && data.requester_email.sent;
             if (isApprove) {
-                this.showToast(this.webApprovalMode ? '已批准，等待验货' : (mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出'));
+                const approvedMessage = this.approvalForm.requires_stock_in ? '已批准，等待验货' : '已批准，申请已完成';
+                this.showToast(this.webApprovalMode ? approvedMessage : (mailSent ? '已批准，已邮件通知申请人' : '已批准，但申请人邮件未发出'));
             } else {
                 this.showToast(this.webApprovalMode ? '已驳回采购申请' : (mailSent ? '已驳回，已邮件通知申请人' : '已驳回，但申请人邮件未发出'));
             }
@@ -4852,6 +4947,12 @@ createApp({
                 '已驳回': 'bg-red-100 text-red-700',
             };
             return map[status] || 'bg-gray-100 text-gray-600';
+        },
+        purchaseStatusLabel(status, item = {}) {
+            if (status === '已入库') {
+                return item.requires_stock_in ? '已入库' : '已完成';
+            }
+            return status || '待审批';
         },
         isInboundAction(action) {
             return String(action || '').includes('入库');
